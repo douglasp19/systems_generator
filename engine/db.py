@@ -25,7 +25,7 @@ def _colunas_existentes(conn: sqlite3.Connection, tabela: str) -> set[str]:
 
 
 def _criar_tabela_sistema(conn: sqlite3.Connection):
-    """Tabelas internas do motor: usuários e log de auditoria."""
+    """Tabelas internas do motor: usuários, permissões por aba e log de auditoria."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS _usuarios (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -33,7 +33,24 @@ def _criar_tabela_sistema(conn: sqlite3.Connection):
             senha_hash TEXT NOT NULL,
             papel TEXT NOT NULL DEFAULT 'usuario',
             ativo INTEGER NOT NULL DEFAULT 1,
+            permissoes_configuradas INTEGER NOT NULL DEFAULT 0,
             criado_em TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+    """)
+    # migração: bancos criados antes do controle de permissões por aba
+    if "permissoes_configuradas" not in _colunas_existentes(conn, "_usuarios"):
+        conn.execute("ALTER TABLE _usuarios ADD COLUMN permissoes_configuradas INTEGER NOT NULL DEFAULT 0")
+
+    # Quais abas (tabelas do schema, ou "_auditoria"/"_backup") um usuário
+    # de papel 'usuario' pode ver. Enquanto 'permissoes_configuradas' for
+    # 0 na tabela _usuarios, o usuário vê tudo (comportamento padrão até
+    # o admin decidir restringir algo). Admins sempre veem tudo.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _usuario_permissoes (
+            usuario_id INTEGER NOT NULL,
+            aba TEXT NOT NULL,
+            PRIMARY KEY (usuario_id, aba),
+            FOREIGN KEY (usuario_id) REFERENCES _usuarios(id)
         )
     """)
     conn.execute("""
@@ -45,6 +62,30 @@ def _criar_tabela_sistema(conn: sqlite3.Connection):
             usuario TEXT,
             detalhes TEXT,
             criado_em TEXT DEFAULT (datetime('now', 'localtime'))
+        )
+    """)
+    # Colunas que o usuário escolheu esconder na tela de lista de uma
+    # tabela (filtro de colunas). Ausência de linhas = todas visíveis.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _colunas_ocultas (
+            usuario_id INTEGER NOT NULL,
+            tabela TEXT NOT NULL,
+            campo TEXT NOT NULL,
+            PRIMARY KEY (usuario_id, tabela, campo),
+            FOREIGN KEY (usuario_id) REFERENCES _usuarios(id)
+        )
+    """)
+    # Largura de coluna customizada pelo usuário na tela de lista.
+    # Ausência de linha para um campo = usa a largura do schema ou o
+    # cálculo automático.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _colunas_largura (
+            usuario_id INTEGER NOT NULL,
+            tabela TEXT NOT NULL,
+            campo TEXT NOT NULL,
+            largura REAL NOT NULL,
+            PRIMARY KEY (usuario_id, tabela, campo),
+            FOREIGN KEY (usuario_id) REFERENCES _usuarios(id)
         )
     """)
     conn.commit()

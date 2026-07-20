@@ -139,7 +139,8 @@ class SchemaEditorApp:
                 ft.OutlinedButton("Abrir", icon=ft.Icons.FOLDER_OPEN, on_click=self._abrir_click),
                 ft.ElevatedButton("Salvar", icon=ft.Icons.SAVE, on_click=self._salvar_click),
                 ft.OutlinedButton("Rodar sistema", icon=ft.Icons.PLAY_ARROW, on_click=self._rodar_sistema_click),
-            ]
+            ],
+            scroll=ft.ScrollMode.AUTO,
         )
 
         sistema = self.bruto.setdefault("sistema", {})
@@ -329,7 +330,7 @@ class SchemaEditorApp:
 
         self.painel_detalhe.content = ft.Column(
             [
-                ft.Row([campo_nome, campo_label, campo_icone]),
+                ft.Row([campo_nome, campo_label, campo_icone], scroll=ft.ScrollMode.AUTO),
                 ft.Divider(),
                 ft.Row(
                     [
@@ -337,7 +338,7 @@ class SchemaEditorApp:
                         ft.Container(expand=True),
                         ft.ElevatedButton("Novo campo", icon=ft.Icons.ADD,
                                           on_click=lambda e, t=tabela: self._abrir_dialogo_campo(t)),
-                    ]
+                    ],
                 ),
                 lista_campos,
                 ft.Divider(),
@@ -347,7 +348,7 @@ class SchemaEditorApp:
                         ft.Container(expand=True),
                         ft.OutlinedButton("Nova aba", icon=ft.Icons.ADD,
                                           on_click=lambda e, t=tabela: self._nova_aba(t)),
-                    ]
+                    ],
                 ),
                 ft.Text(
                     "Se nenhuma aba for definida, todos os campos aparecem em uma coluna só.",
@@ -366,6 +367,8 @@ class SchemaEditorApp:
             detalhes += f" · ref: {campo.get('tabela_ref', '?')}"
         if campo.get("minimo") is not None or campo.get("maximo") is not None:
             detalhes += f" · min={campo.get('minimo', '-')} max={campo.get('maximo', '-')}"
+        if campo.get("largura") is not None:
+            detalhes += f" · largura={campo.get('largura')}px"
 
         return ft.Container(
             content=ft.Row(
@@ -426,7 +429,8 @@ class SchemaEditorApp:
                 campo_nome_aba, campo_campos_aba,
                 ft.IconButton(ft.Icons.DELETE_OUTLINE, icon_size=16, icon_color=ft.Colors.RED,
                               on_click=lambda e, t=tabela, i=idx: self._remover_aba(t, i)),
-            ]
+            ],
+            scroll=ft.ScrollMode.AUTO,
         )
 
     def _nova_aba(self, tabela: dict):
@@ -456,7 +460,13 @@ class SchemaEditorApp:
 
         campo_minimo = ft.TextField(label="Valor mínimo (opcional)", value=_texto_default(c.get("minimo")), width=180)
         campo_maximo = ft.TextField(label="Valor máximo (opcional)", value=_texto_default(c.get("maximo")), width=180)
-        linha_min_max = ft.Row([campo_minimo, campo_maximo])
+        linha_min_max = ft.Row([campo_minimo, campo_maximo], scroll=ft.ScrollMode.AUTO)
+
+        campo_largura = ft.TextField(
+            label="Largura da coluna na lista, em px (opcional)",
+            value=_texto_default(c.get("largura")), width=250,
+            hint_text="deixe em branco para calcular automaticamente",
+        )
 
         campo_tabela_ref = ft.Dropdown(
             label="Tabela referenciada", width=250,
@@ -464,7 +474,7 @@ class SchemaEditorApp:
             options=[ft.dropdown.Option(n) for n in outras_tabelas],
         )
         campo_exibicao_ref = ft.TextField(label="Campo a exibir (dessa tabela)", value=c.get("campo_exibicao", ""), width=250)
-        linha_referencia = ft.Row([campo_tabela_ref, campo_exibicao_ref])
+        linha_referencia = ft.Row([campo_tabela_ref, campo_exibicao_ref], scroll=ft.ScrollMode.AUTO)
 
         def atualizar_visibilidade(e=None):
             tipo = campo_tipo.value
@@ -516,6 +526,14 @@ class SchemaEditorApp:
                         self.page.update()
                         return
 
+            if campo_largura.value.strip():
+                try:
+                    novo["largura"] = float(campo_largura.value.strip())
+                except ValueError:
+                    mensagem_erro.value = "Largura da coluna inválida."
+                    self.page.update()
+                    return
+
             if campo_tipo.value == "referencia":
                 if not campo_tabela_ref.value or not campo_exibicao_ref.value.strip():
                     mensagem_erro.value = "Campos de referência precisam de tabela e campo a exibir."
@@ -542,15 +560,16 @@ class SchemaEditorApp:
                 content=ft.Column(
                     [
                         campo_nome, campo_label, campo_tipo,
-                        ft.Row([campo_obrigatorio, campo_buscavel]),
+                        ft.Row([campo_obrigatorio, campo_buscavel], scroll=ft.ScrollMode.AUTO),
                         campo_default,
                         linha_min_max,
                         linha_referencia,
+                        campo_largura,
                         mensagem_erro,
                     ],
                     tight=True, spacing=10, scroll=ft.ScrollMode.AUTO,
                 ),
-                width=440, height=420,
+                width=440, height=470,
             ),
             actions=[
                 ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),

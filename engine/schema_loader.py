@@ -37,6 +37,9 @@ class Campo:
     # (ex: validar formato de e-mail ou CPF/CNPJ)
     regex: Optional[str] = None
     regex_mensagem: Optional[str] = None
+    # largura da coluna (em pixels) na tela de lista. Se não informado, o
+    # motor calcula uma largura automática a partir do tamanho do rótulo.
+    largura: Optional[float] = None
 
     def __post_init__(self):
         if self.tipo not in TIPOS_SQLITE:

@@ -8,7 +8,14 @@ import os
 import flet as ft
 
 from engine.schema_loader import Schema, Tabela, Campo
-from engine import db, auth, audit, export, backup, printer, fiscal
+from engine import db, auth, audit, export, backup, printer, fiscal, preferencias
+
+
+def _texto_largura(valor) -> str:
+    """Formata uma largura numérica (ou None) para exibir num TextField."""
+    if valor is None:
+        return ""
+    return str(int(valor)) if float(valor).is_integer() else str(valor)
 
 
 class SistemaApp:
@@ -83,33 +90,63 @@ class SistemaApp:
     # ------------------------------------------------------------------
     # APP PRINCIPAL (após login)
     # ------------------------------------------------------------------
+    def _abas_visiveis(self):
+        """Filtra as abas do sistema conforme as permissões do usuário
+        logado. Admin sempre vê tudo. Usuário comum só vê o que o admin
+        marcou explicitamente ao criar/editar a conta -- enquanto isso não
+        for configurado, vê tudo (comportamento padrão)."""
+        if self.usuario_logado["papel"] == "admin":
+            return list(self.schema.tabelas), True, True
+
+        if not auth.permissoes_configuradas(self.conn, self.usuario_logado["id"]):
+            return list(self.schema.tabelas), True, True
+
+        permitidas = auth.permissoes_usuario(self.conn, self.usuario_logado["id"])
+        tabelas_visiveis = [t for t in self.schema.tabelas if t.nome in permitidas]
+        return tabelas_visiveis, "_auditoria" in permitidas, "_backup" in permitidas
+
     def _mostrar_app_principal(self):
         self.page.controls.clear()
 
+        tabelas_visiveis, mostrar_auditoria, mostrar_backup = self._abas_visiveis()
+
         destinos = []
-        for t in self.schema.tabelas:
+        for t in tabelas_visiveis:
             destinos.append(
                 ft.NavigationRailDestination(
                     icon=getattr(ft.Icons, t.icone.upper(), ft.Icons.TABLE_ROWS),
                     label=t.label,
                 )
             )
-        destinos.append(ft.NavigationRailDestination(icon=ft.Icons.HISTORY, label="Auditoria"))
+        if mostrar_auditoria:
+            destinos.append(ft.NavigationRailDestination(icon=ft.Icons.HISTORY, label="Auditoria"))
         if self.usuario_logado["papel"] == "admin":
             destinos.append(ft.NavigationRailDestination(icon=ft.Icons.PEOPLE, label="Usuários"))
-        destinos.append(ft.NavigationRailDestination(icon=ft.Icons.SAVE, label="Backup"))
+        if mostrar_backup:
+            destinos.append(ft.NavigationRailDestination(icon=ft.Icons.SAVE, label="Backup"))
 
         self.area_conteudo = ft.Container(expand=True, padding=20)
 
         def trocar_tela(e):
             idx = e.control.selected_index
-            if idx < len(self.schema.tabelas):
-                self._tela_tabela(self.schema.tabelas[idx])
-            elif idx == len(self.schema.tabelas):
-                self._tela_auditoria()
-            elif self.usuario_logado["papel"] == "admin" and idx == len(self.schema.tabelas) + 1:
-                self._tela_usuarios()
-            else:
+            if idx < len(tabelas_visiveis):
+                self._tela_tabela(tabelas_visiveis[idx])
+                return
+            idx -= len(tabelas_visiveis)
+
+            if mostrar_auditoria:
+                if idx == 0:
+                    self._tela_auditoria()
+                    return
+                idx -= 1
+
+            if self.usuario_logado["papel"] == "admin":
+                if idx == 0:
+                    self._tela_usuarios()
+                    return
+                idx -= 1
+
+            if mostrar_backup and idx == 0:
                 self._tela_backup()
 
         rail = ft.NavigationRail(
@@ -127,7 +164,7 @@ class SistemaApp:
                 ft.Container(expand=True),
                 ft.Text(f"Usuário: {self.usuario_logado['usuario']} ({self.usuario_logado['papel']})", size=12),
                 ft.IconButton(ft.Icons.LOGOUT, tooltip="Sair", on_click=lambda e: self._mostrar_login()),
-            ]
+            ],
         )
 
         self.page.add(
@@ -141,23 +178,41 @@ class SistemaApp:
             )
         )
 
-        if self.schema.tabelas:
-            self._tela_tabela(self.schema.tabelas[0])
+        if destinos:
+            if tabelas_visiveis:
+                self._tela_tabela(tabelas_visiveis[0])
+            elif mostrar_auditoria:
+                self._tela_auditoria()
+            elif self.usuario_logado["papel"] == "admin":
+                self._tela_usuarios()
+            elif mostrar_backup:
+                self._tela_backup()
+        else:
+            self.area_conteudo.content = ft.Text(
+                "Nenhuma aba liberada para este usuário. Fale com o administrador.",
+                color=ft.Colors.GREY_600,
+            )
         self.page.update()
 
     # ------------------------------------------------------------------
     # TELA GENÉRICA DE TABELA (lista + busca + ações)
     # ------------------------------------------------------------------
     def _tela_tabela(self, tabela: Tabela):
+        campos_ocultos = preferencias.colunas_ocultas(self.conn, self.usuario_logado["id"], tabela.nome)
+        campos_visiveis = [c for c in tabela.campos if c.nome not in campos_ocultos]
+        larguras_custom = preferencias.larguras_colunas(self.conn, self.usuario_logado["id"], tabela.nome)
+
         campo_busca = ft.TextField(
             label="Buscar", prefix_icon=ft.Icons.SEARCH, width=300, dense=True
         )
-        tabela_dados = ft.DataTable(columns=self._colunas_datatable(tabela), rows=[])
+        tabela_dados = ft.DataTable(columns=self._colunas_datatable(campos_visiveis, larguras_custom), rows=[])
         banner_estoque = ft.Container(visible=False)
 
         def recarregar(e=None):
             registros = db.listar(self.conn, tabela, busca=campo_busca.value or "")
-            tabela_dados.rows = [self._linha_datatable(tabela, r) for r in registros]
+            tabela_dados.rows = [
+                self._linha_datatable(tabela, r, campos_visiveis, larguras_custom) for r in registros
+            ]
             self._atualizar_banner_estoque(tabela, banner_estoque)
             self.page.update()
 
@@ -179,6 +234,8 @@ class SistemaApp:
             [
                 campo_busca,
                 ft.Container(expand=True),
+                ft.OutlinedButton("Colunas", icon=ft.Icons.VIEW_COLUMN,
+                                  on_click=lambda e: self._abrir_dialogo_colunas(tabela)),
                 ft.OutlinedButton("Exportar CSV", icon=ft.Icons.DOWNLOAD, on_click=exportar_csv_click),
                 ft.OutlinedButton("Exportar Excel", icon=ft.Icons.DOWNLOAD, on_click=exportar_excel_click),
                 ft.ElevatedButton(
@@ -186,7 +243,7 @@ class SistemaApp:
                     icon=ft.Icons.ADD,
                     on_click=lambda e: self._abrir_formulario(tabela, recarregar),
                 ),
-            ]
+            ],
         )
 
         self.area_conteudo.content = ft.Column(
@@ -194,7 +251,7 @@ class SistemaApp:
                 ft.Text(tabela.label, size=20, weight=ft.FontWeight.BOLD),
                 banner_estoque,
                 barra_acoes,
-                ft.Container(content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO), expand=True),
+                self._tabela_rolavel(tabela_dados),
             ],
             expand=True,
         )
@@ -203,6 +260,107 @@ class SistemaApp:
         self._recarregar_atual = recarregar
         recarregar()
         self.page.update()
+
+    def _abrir_dialogo_colunas(self, tabela: Tabela):
+        """Diálogo com um checkbox + campo de largura por coluna, para
+        escolher o que aparece e o quão larga cada coluna fica na tela de
+        lista dessa tabela (preferência por usuário)."""
+        ocultos_atuais = preferencias.colunas_ocultas(self.conn, self.usuario_logado["id"], tabela.nome)
+        larguras_atuais = preferencias.larguras_colunas(self.conn, self.usuario_logado["id"], tabela.nome)
+
+        checkboxes: dict[str, ft.Checkbox] = {
+            c.nome: ft.Checkbox(label=c.label, value=c.nome not in ocultos_atuais)
+            for c in tabela.campos
+        }
+        campos_largura: dict[str, ft.TextField] = {
+            c.nome: ft.TextField(
+                value=_texto_largura(larguras_atuais.get(c.nome, c.largura)),
+                width=90, dense=True, suffix="px",
+                hint_text=str(int(self._largura_campo(c))),
+            )
+            for c in tabela.campos
+        }
+
+        def marcar_todas(valor: bool):
+            for cb in checkboxes.values():
+                cb.value = valor
+            self.page.update()
+
+        mensagem_erro = ft.Text("", color=ft.Colors.RED, size=12)
+
+        def salvar(e):
+            ocultos = [nome for nome, cb in checkboxes.items() if not cb.value]
+
+            larguras: dict[str, float] = {}
+            for nome, campo_txt in campos_largura.items():
+                texto = campo_txt.value.strip()
+                if not texto:
+                    continue
+                try:
+                    larguras[nome] = float(texto)
+                except ValueError:
+                    mensagem_erro.value = f"Largura inválida em '{nome}'."
+                    self.page.update()
+                    return
+
+            preferencias.definir_colunas_ocultas(self.conn, self.usuario_logado["id"], tabela.nome, ocultos)
+            preferencias.definir_larguras_colunas(self.conn, self.usuario_logado["id"], tabela.nome, larguras)
+            self.page.pop_dialog()
+            self._tela_tabela(tabela)
+
+        linhas_campos = [
+            ft.Row(
+                [checkboxes[c.nome], ft.Container(expand=True), campos_largura[c.nome]],
+                scroll=ft.ScrollMode.AUTO,
+            )
+            for c in tabela.campos
+        ]
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Colunas visíveis"),
+            content=ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Row(
+                            [
+                                ft.TextButton("Marcar todas", on_click=lambda e: marcar_todas(True)),
+                                ft.TextButton("Desmarcar todas", on_click=lambda e: marcar_todas(False)),
+                            ]
+                        ),
+                        ft.Text(
+                            "Deixe a largura em branco para calcular automaticamente.",
+                            size=11, color=ft.Colors.GREY_600,
+                        ),
+                        ft.Divider(),
+                        ft.Column(linhas_campos, spacing=4, scroll=ft.ScrollMode.AUTO),
+                        mensagem_erro,
+                    ],
+                    tight=True,
+                ),
+                width=360, height=min(150 + 46 * len(checkboxes), 480),
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),
+                ft.ElevatedButton("Aplicar", on_click=salvar),
+            ],
+        )
+        self.page.show_dialog(dialogo)
+
+    def _tabela_rolavel(self, tabela_dados: ft.DataTable) -> ft.Container:
+        """Envolve um DataTable com rolagem vertical, para a lista de
+        registros não estourar a altura disponível da tela.
+
+        Nota: tentar somar rolagem horizontal aqui (Row com scroll dentro
+        do Column com scroll) quebra o layout nesta versão do Flet -- a
+        janela inteira passa a "vazar" para a largura do conteúdo. Por
+        isso as colunas usam largura moderada (_largura_texto/_largura_campo)
+        e o usuário pode ocultar colunas (botão "Colunas") em vez de
+        depender de rolagem nos dois eixos."""
+        return ft.Container(
+            content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO),
+            expand=True,
+        )
 
     def _atualizar_banner_estoque(self, tabela: Tabela, banner: ft.Container):
         if not tabela.alerta_estoque.ativo:
@@ -236,14 +394,42 @@ class SistemaApp:
         banner.padding = 10
         banner.border_radius = 6
 
-    def _colunas_datatable(self, tabela: Tabela) -> list[ft.DataColumn]:
-        colunas = [ft.DataColumn(ft.Text("ID"))]
-        for c in tabela.campos:
-            colunas.append(ft.DataColumn(ft.Text(c.label)))
-        colunas.append(ft.DataColumn(ft.Text("Ações")))
+    def _largura_texto(self, texto: str) -> float:
+        """Calcula uma largura mínima para a coluna com base no tamanho do
+        rótulo. Sem isso, o DataTable dimensiona a coluna pelo conteúdo das
+        células (que pode ser vazio/curto) e o texto do cabeçalho, quando
+        mais longo, invade a coluna vizinha. O rótulo quebra em duas linhas
+        quando não cabe na largura calculada."""
+        return max(70.0, min(130.0, len(texto) * 7 + 20))
+
+    def _largura_campo(self, campo: Campo, overrides: dict[str, float] | None = None) -> float:
+        """Largura da coluna desse campo na lista. Prioridade: ajuste do
+        usuário (diálogo 'Colunas') > 'largura' do schema/YAML > cálculo
+        automático a partir do tamanho do rótulo."""
+        if overrides and campo.nome in overrides:
+            return float(overrides[campo.nome])
+        if campo.largura:
+            return float(campo.largura)
+        return self._largura_texto(campo.label)
+
+    def _colunas_datatable(self, campos: list[Campo], larguras: dict[str, float] | None = None) -> list[ft.DataColumn]:
+        colunas = [
+            ft.DataColumn(ft.Container(ft.Text("ID", weight=ft.FontWeight.BOLD), width=50))
+        ]
+        for c in campos:
+            colunas.append(
+                ft.DataColumn(
+                    ft.Container(
+                        ft.Text(c.label, weight=ft.FontWeight.BOLD),
+                        width=self._largura_campo(c, larguras),
+                    )
+                )
+            )
+        colunas.append(ft.DataColumn(ft.Container(ft.Text("Ações", weight=ft.FontWeight.BOLD), width=100)))
         return colunas
 
-    def _linha_datatable(self, tabela: Tabela, registro: dict) -> ft.DataRow:
+    def _linha_datatable(self, tabela: Tabela, registro: dict, campos: list[Campo],
+                          larguras: dict[str, float] | None = None) -> ft.DataRow:
         # Resolve os campos de referência (ex: produto_id -> "Parafuso 6mm")
         # para exibir o rótulo em vez do número do id.
         registro_exibicao = db.registro_para_exibicao(self.conn, tabela, registro)
@@ -252,16 +438,19 @@ class SistemaApp:
         valor_min = registro.get(tabela.alerta_estoque.campo_minimo) if tabela.alerta_estoque.ativo else None
         abaixo_do_minimo = valor_qtd is not None and valor_min is not None and valor_qtd < valor_min
 
-        celulas = [ft.DataCell(ft.Text(str(registro["id"])))]
-        for c in tabela.campos:
+        celulas = [ft.DataCell(ft.Container(ft.Text(str(registro["id"])), width=50))]
+        for c in campos:
             valor = registro_exibicao.get(c.nome)
             destaque = abaixo_do_minimo and c.nome == tabela.alerta_estoque.campo_quantidade
             celulas.append(
                 ft.DataCell(
-                    ft.Text(
-                        self._formatar_valor(c, valor),
-                        color=ft.Colors.RED if destaque else None,
-                        weight=ft.FontWeight.BOLD if destaque else None,
+                    ft.Container(
+                        ft.Text(
+                            self._formatar_valor(c, valor),
+                            color=ft.Colors.RED if destaque else None,
+                            weight=ft.FontWeight.BOLD if destaque else None,
+                        ),
+                        width=self._largura_campo(c, larguras),
                     )
                 )
             )
@@ -437,7 +626,7 @@ class SistemaApp:
 
             conteudo_formulario = ft.Column(
                 [
-                    ft.Row(botoes_aba, spacing=4),
+                    ft.Row(botoes_aba, spacing=4, scroll=ft.ScrollMode.AUTO),
                     ft.Divider(height=1),
                     conteudo_da_aba,
                     mensagem_erro,
@@ -531,28 +720,33 @@ class SistemaApp:
     # ------------------------------------------------------------------
     def _tela_auditoria(self):
         registros = audit.listar(self.conn)
+        rotulos = ["ID", "Data/Hora", "Usuário", "Tabela", "Ação", "Registro"]
+        larguras = [self._largura_texto(r) for r in rotulos]
+
+        def celula(idx: int, texto: str) -> ft.DataCell:
+            return ft.DataCell(ft.Container(ft.Text(texto), width=larguras[idx]))
+
         linhas = [
             ft.DataRow(cells=[
-                ft.DataCell(ft.Text(str(r["id"]))),
-                ft.DataCell(ft.Text(r["criado_em"])),
-                ft.DataCell(ft.Text(r["usuario"] or "")),
-                ft.DataCell(ft.Text(r["tabela"])),
-                ft.DataCell(ft.Text(r["acao"])),
-                ft.DataCell(ft.Text(str(r["registro_id"]) if r["registro_id"] else "-")),
+                celula(0, str(r["id"])),
+                celula(1, r["criado_em"]),
+                celula(2, r["usuario"] or ""),
+                celula(3, r["tabela"]),
+                celula(4, r["acao"]),
+                celula(5, str(r["registro_id"]) if r["registro_id"] else "-"),
             ])
             for r in registros
         ]
         tabela_dados = ft.DataTable(
             columns=[
-                ft.DataColumn(ft.Text("ID")), ft.DataColumn(ft.Text("Data/Hora")),
-                ft.DataColumn(ft.Text("Usuário")), ft.DataColumn(ft.Text("Tabela")),
-                ft.DataColumn(ft.Text("Ação")), ft.DataColumn(ft.Text("Registro")),
+                ft.DataColumn(ft.Container(ft.Text(rotulo, weight=ft.FontWeight.BOLD), width=largura))
+                for rotulo, largura in zip(rotulos, larguras)
             ],
             rows=linhas,
         )
         self.area_conteudo.content = ft.Column(
             [ft.Text("Auditoria", size=20, weight=ft.FontWeight.BOLD),
-             ft.Container(content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO), expand=True)],
+             self._tabela_rolavel(tabela_dados)],
             expand=True,
         )
         self.page.update()
@@ -560,47 +754,159 @@ class SistemaApp:
     # ------------------------------------------------------------------
     # USUÁRIOS (apenas admin)
     # ------------------------------------------------------------------
+    # nomes das abas fixas (não são tabelas do schema) que também podem
+    # ser liberadas/restringidas por usuário
+    _ABAS_FIXAS = [("_auditoria", "Auditoria"), ("_backup", "Backup")]
+
     def _tela_usuarios(self):
         usuarios = auth.listar_usuarios(self.conn)
-        linhas = [
-            ft.DataRow(cells=[
-                ft.DataCell(ft.Text(str(u["id"]))),
-                ft.DataCell(ft.Text(u["usuario"])),
-                ft.DataCell(ft.Text(u["papel"])),
-                ft.DataCell(ft.Text("Ativo" if u["ativo"] else "Inativo")),
+        rotulos = ["ID", "Usuário", "Papel", "Status"]
+        larguras = [self._largura_texto(r) for r in rotulos]
+
+        def linha_usuario(u: dict) -> ft.DataRow:
+            return ft.DataRow(cells=[
+                ft.DataCell(ft.Container(ft.Text(str(u["id"])), width=larguras[0])),
+                ft.DataCell(ft.Container(ft.Text(u["usuario"]), width=larguras[1])),
+                ft.DataCell(ft.Container(ft.Text(u["papel"]), width=larguras[2])),
+                ft.DataCell(ft.Container(ft.Text("Ativo" if u["ativo"] else "Inativo"), width=larguras[3])),
+                ft.DataCell(
+                    ft.IconButton(
+                        ft.Icons.EDIT, icon_size=18, tooltip="Editar",
+                        on_click=lambda e, usr=u: self._abrir_dialogo_usuario(usr),
+                    )
+                ),
             ])
-            for u in usuarios
-        ]
+
         tabela_dados = ft.DataTable(
-            columns=[ft.DataColumn(ft.Text("ID")), ft.DataColumn(ft.Text("Usuário")),
-                     ft.DataColumn(ft.Text("Papel")), ft.DataColumn(ft.Text("Status"))],
-            rows=linhas,
+            columns=[
+                ft.DataColumn(ft.Container(ft.Text(rotulo, weight=ft.FontWeight.BOLD), width=largura))
+                for rotulo, largura in zip(rotulos, larguras)
+            ] + [ft.DataColumn(ft.Container(ft.Text("Ações", weight=ft.FontWeight.BOLD), width=100))],
+            rows=[linha_usuario(u) for u in usuarios],
         )
-
-        campo_usuario = ft.TextField(label="Novo usuário", width=200)
-        campo_senha = ft.TextField(label="Senha", width=200, password=True, can_reveal_password=True)
-        campo_papel = ft.Dropdown(
-            label="Papel", width=150,
-            options=[ft.dropdown.Option("usuario"), ft.dropdown.Option("admin")],
-            value="usuario",
-        )
-
-        def criar(e):
-            if campo_usuario.value and campo_senha.value:
-                auth.criar_usuario(self.conn, campo_usuario.value, campo_senha.value, campo_papel.value)
-                self._tela_usuarios()
 
         self.area_conteudo.content = ft.Column(
             [
                 ft.Text("Usuários", size=20, weight=ft.FontWeight.BOLD),
-                ft.Row([campo_usuario, campo_senha, campo_papel,
-                        ft.ElevatedButton("Adicionar", icon=ft.Icons.ADD, on_click=criar)]),
+                ft.ElevatedButton(
+                    "Novo usuário", icon=ft.Icons.PERSON_ADD,
+                    on_click=lambda e: self._abrir_dialogo_usuario(None),
+                ),
                 ft.Divider(),
-                ft.Container(content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO), expand=True),
+                self._tabela_rolavel(tabela_dados),
             ],
             expand=True,
         )
         self.page.update()
+
+    def _abrir_dialogo_usuario(self, usuario_existente: dict | None):
+        editando = usuario_existente is not None
+
+        campo_usuario = ft.TextField(
+            label="Usuário", value=usuario_existente["usuario"] if editando else "", width=250,
+        )
+        campo_senha = ft.TextField(
+            label="Nova senha" if editando else "Senha",
+            hint_text="Deixe em branco para manter a atual" if editando else None,
+            width=250, password=True, can_reveal_password=True,
+        )
+        campo_papel = ft.Dropdown(
+            label="Papel", width=180,
+            options=[ft.dropdown.Option("usuario"), ft.dropdown.Option("admin")],
+            value=usuario_existente["papel"] if editando else "usuario",
+        )
+        campo_ativo = ft.Switch(label="Ativo", value=bool(usuario_existente["ativo"]) if editando else True)
+
+        ja_configurado = editando and auth.permissoes_configuradas(self.conn, usuario_existente["id"])
+        permissoes_atuais = auth.permissoes_usuario(self.conn, usuario_existente["id"]) if ja_configurado else set()
+
+        checkboxes_abas: dict[str, ft.Checkbox] = {}
+        for t in self.schema.tabelas:
+            marcado = (t.nome in permissoes_atuais) if ja_configurado else True
+            checkboxes_abas[t.nome] = ft.Checkbox(label=t.label, value=marcado)
+        for chave, rotulo in self._ABAS_FIXAS:
+            marcado = (chave in permissoes_atuais) if ja_configurado else True
+            checkboxes_abas[chave] = ft.Checkbox(label=rotulo, value=marcado)
+
+        aviso_permissoes = ft.Text(
+            "Abas visíveis para este usuário (ignorado para administradores):",
+            size=12, weight=ft.FontWeight.BOLD,
+        )
+        coluna_permissoes = ft.Column(
+            [aviso_permissoes] + list(checkboxes_abas.values()),
+            spacing=4, scroll=ft.ScrollMode.AUTO,
+        )
+
+        def atualizar_visibilidade_permissoes(e=None):
+            coluna_permissoes.visible = campo_papel.value != "admin"
+            self.page.update()
+
+        campo_papel.on_select = atualizar_visibilidade_permissoes
+        atualizar_visibilidade_permissoes()
+
+        mensagem_erro = ft.Text("", color=ft.Colors.RED, size=12)
+
+        def salvar(e):
+            nome = (campo_usuario.value or "").strip()
+            if not nome:
+                mensagem_erro.value = "Informe o nome de usuário."
+                self.page.update()
+                return
+            if not editando and not campo_senha.value:
+                mensagem_erro.value = "Informe uma senha."
+                self.page.update()
+                return
+
+            if editando:
+                ok = auth.atualizar_usuario(
+                    self.conn, usuario_existente["id"], nome, campo_papel.value,
+                    campo_ativo.value, nova_senha=campo_senha.value or None,
+                )
+                usuario_id = usuario_existente["id"] if ok else None
+            else:
+                usuario_id = auth.criar_usuario(self.conn, nome, campo_senha.value, campo_papel.value)
+                ok = usuario_id is not None
+
+            if not ok:
+                mensagem_erro.value = "Já existe um usuário com esse nome."
+                self.page.update()
+                return
+
+            abas_marcadas = [chave for chave, cb in checkboxes_abas.items() if cb.value]
+            auth.definir_permissoes(self.conn, usuario_id, abas_marcadas)
+
+            audit.registrar(
+                self.conn, "_usuarios", usuario_id,
+                "editar_usuario" if editando else "criar_usuario",
+                self.usuario_logado["usuario"],
+            )
+
+            self.page.pop_dialog()
+            self._tela_usuarios()
+            self._notificar("Usuário salvo com sucesso.")
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Editar usuário" if editando else "Novo usuário"),
+            content=ft.Container(
+                content=ft.Column(
+                    [
+                        campo_usuario, campo_senha,
+                        ft.Row([campo_papel, campo_ativo], scroll=ft.ScrollMode.AUTO),
+                        ft.Divider(),
+                        coluna_permissoes,
+                        mensagem_erro,
+                    ],
+                    tight=True, spacing=10, scroll=ft.ScrollMode.AUTO,
+                ),
+                width=420, height=460,
+            ),
+            actions=[
+                ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),
+                ft.ElevatedButton("Salvar", on_click=salvar),
+            ],
+        )
+        self.page.show_dialog(dialogo)
 
     # ------------------------------------------------------------------
     # BACKUP

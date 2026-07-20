@@ -78,7 +78,9 @@ Pronto — sistema funcionando, sem escrever nenhuma linha de código de tela.
 | `referencia` | liga a um registro de outra tabela    | INTEGER (FK)   |
 
 Cada campo aceita: `label` (texto exibido na tela), `obrigatorio` (true/false),
-`buscavel` (se aparece na busca da lista) e `default` (valor padrão).
+`buscavel` (se aparece na busca da lista), `default` (valor padrão) e
+`largura` (largura em pixels da coluna na tela de lista -- opcional, veja
+"Colunas ajustáveis e filtro de colunas" mais abaixo).
 
 ### Relacionamento entre tabelas (`referencia`)
 
@@ -334,6 +336,43 @@ Com isso, sempre que algum registro tiver `quantidade < estoque_minimo`:
 a tela de lista mostra um banner no topo listando os itens afetados
 (com a quantidade atual e o mínimo configurado), e a célula de
 quantidade daquele registro fica destacada em vermelho na tabela.
+
+## Colunas ajustáveis e filtro de colunas
+
+Tabelas com muitos campos podem não caber todas as colunas na largura da
+janela. Três recursos ajudam nisso, dos mais permanentes aos mais rápidos:
+
+**Largura padrão no schema** -- ajuste no YAML quando quiser que todo
+mundo já abra com essa largura (ex: uma coluna de texto longo precisando
+de mais espaço):
+
+```yaml
+- nome: descricao_problema
+  label: "Descrição do problema"
+  tipo: texto_longo
+  largura: 220        # px -- se não informado, o motor calcula automaticamente
+```
+
+**Ajuste de largura pelo usuário na tela** -- o botão "Colunas" na tela de
+lista abre um diálogo com um campo de largura (em px) ao lado de cada
+coluna. Deixar em branco volta a usar a largura do schema/cálculo
+automático. Cada usuário pode ajustar a visão do jeito que preferir, sem
+mexer no YAML -- a escolha fica salva por usuário e por tabela e persiste
+entre sessões. (Não é possível arrastar a borda da coluna com o mouse --
+o `DataTable` do Flet não suporta isso nesta versão; o campo numérico no
+diálogo é o jeito de ajustar.)
+
+**Filtro de colunas** -- no mesmo diálogo "Colunas", um checkbox por campo
+esconde as colunas que não interessam naquele momento (ex: numa tabela
+com 10 campos, deixar visíveis só os 4 mais usados no dia a dia). Também
+salvo por usuário e por tabela. Colunas ocultas continuam existindo
+normalmente: exportação (CSV/Excel), impressão de cupom e emissão fiscal
+usam todos os campos, independente do que está oculto só na tela.
+
+> A tabela ainda não tem rolagem horizontal (tentativas de somar rolagem
+> horizontal e vertical quebraram o layout nesta versão do Flet) -- por
+> isso o filtro de colunas e o ajuste de largura são o jeito recomendado
+> de lidar com tabelas muito largas, em vez de rolar a tela pros lados.
 
 ## Próximos passos sugeridos
 

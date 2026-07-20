@@ -222,6 +222,10 @@ class FiscalGlobalConfig:
     api_url: str = ""
     api_token_env: str = ""       # nome da variável de ambiente com o token (nunca no YAML!)
     cnpj_emitente: str = ""
+    # Token digitado pelo admin na tela de Configurações (guardado no
+    # banco do sistema, não no YAML). Tem prioridade sobre api_token_env
+    # quando preenchido -- ver engine/configuracoes.py.
+    api_token: str = ""
 
 
 @dataclass

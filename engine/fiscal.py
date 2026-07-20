@@ -177,7 +177,12 @@ def emitir(conn: sqlite3.Connection, schema: Schema, tabela: Tabela, registro: d
 
     payload = _montar_payload(conn, schema, tabela, registro)
 
-    token = os.environ.get(schema.fiscal.api_token_env, "") if schema.fiscal.api_token_env else ""
+    # Prioridade: token digitado na tela de Configurações (guardado no
+    # banco do sistema) -- se não houver, cai pra variável de ambiente
+    # (jeito antigo, ainda útil pra quem prefere configurar assim).
+    token = schema.fiscal.api_token or (
+        os.environ.get(schema.fiscal.api_token_env, "") if schema.fiscal.api_token_env else ""
+    )
 
     # Sem token configurado -> modo simulação (não envia nada pela rede)
     if not token or not schema.fiscal.api_url:

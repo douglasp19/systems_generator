@@ -8,7 +8,7 @@ import os
 import flet as ft
 
 from engine.schema_loader import Schema, Tabela, Campo
-from engine import db, auth, audit, export, backup, printer, fiscal, preferencias, estoque
+from engine import db, auth, audit, export, backup, printer, fiscal, preferencias, estoque, configuracoes
 
 
 def _texto_largura(valor) -> str:
@@ -129,6 +129,7 @@ class SistemaApp:
             destinos.append(ft.NavigationRailDestination(icon=ft.Icons.RECEIPT_LONG, label="Notas Pendentes"))
         if self.usuario_logado["papel"] == "admin":
             destinos.append(ft.NavigationRailDestination(icon=ft.Icons.PEOPLE, label="Usuários"))
+            destinos.append(ft.NavigationRailDestination(icon=ft.Icons.SETTINGS, label="Configurações"))
         if mostrar_backup:
             destinos.append(ft.NavigationRailDestination(icon=ft.Icons.SAVE, label="Backup"))
 
@@ -156,6 +157,10 @@ class SistemaApp:
             if self.usuario_logado["papel"] == "admin":
                 if idx == 0:
                     self._tela_usuarios()
+                    return
+                idx -= 1
+                if idx == 0:
+                    self._tela_configuracoes()
                     return
                 idx -= 1
 
@@ -1091,6 +1096,194 @@ class SistemaApp:
         self.page.update()
 
     # ------------------------------------------------------------------
+    # CONFIGURAÇÕES (impressora e fiscal -- só admin)
+    # ------------------------------------------------------------------
+    def _tela_configuracoes(self):
+        imp = self.schema.impressora
+        fis = self.schema.fiscal
+
+        campo_imp_ativo = ft.Switch(label="Ativo", value=imp.ativo)
+        campo_imp_conexao = ft.Dropdown(
+            label="Tipo de conexão", width=180, dense=True, value=imp.conexao,
+            options=[ft.dropdown.Option(v) for v in ("usb", "rede", "serial", "arquivo")],
+        )
+        campo_imp_colunas = ft.TextField(label="Colunas do papel", value=str(imp.colunas), width=140, dense=True)
+        campo_imp_vendor = ft.TextField(label="Vendor ID (USB)", value=imp.vendor_id, width=180, dense=True)
+        campo_imp_product = ft.TextField(label="Product ID (USB)", value=imp.product_id, width=180, dense=True)
+        campo_imp_ip = ft.TextField(label="IP (rede)", value=imp.ip, width=180, dense=True)
+        campo_imp_porta = ft.TextField(label="Porta (rede)", value=str(imp.porta), width=120, dense=True)
+        campo_imp_serial = ft.TextField(label="Dispositivo serial", value=imp.dispositivo_serial, width=220, dense=True)
+
+        mensagem_imp = ft.Text("", color=ft.Colors.RED, size=12)
+
+        def salvar_impressora(e):
+            try:
+                porta = int(campo_imp_porta.value or 0)
+                colunas = int(campo_imp_colunas.value or 42)
+            except ValueError:
+                mensagem_imp.value = "Porta e colunas precisam ser números."
+                self.page.update()
+                return
+
+            valores = {
+                "ativo": campo_imp_ativo.value,
+                "conexao": campo_imp_conexao.value,
+                "vendor_id": campo_imp_vendor.value,
+                "product_id": campo_imp_product.value,
+                "ip": campo_imp_ip.value,
+                "porta": porta,
+                "dispositivo_serial": campo_imp_serial.value,
+                "colunas": colunas,
+            }
+            configuracoes.salvar(self.conn, "impressora", valores)
+            for chave, valor in valores.items():
+                setattr(self.schema.impressora, chave, valor)
+            audit.registrar(self.conn, "_configuracoes", None, "editar_impressora",
+                             self.usuario_logado["usuario"])
+            mensagem_imp.value = ""
+            self._notificar("Configuração de impressora salva.")
+
+        campo_fis_ativo = ft.Switch(label="Ativo", value=fis.ativo)
+        campo_fis_provedor = ft.TextField(label="Provedor", value=fis.provedor, width=200, dense=True)
+        campo_fis_ambiente = ft.Dropdown(
+            label="Ambiente", width=180, dense=True, value=fis.ambiente,
+            options=[ft.dropdown.Option("homologacao"), ft.dropdown.Option("producao")],
+        )
+        campo_fis_url = ft.TextField(label="URL da API do gateway", value=fis.api_url, width=340, dense=True)
+        campo_fis_token = ft.TextField(
+            label="Token de acesso", value=fis.api_token, width=340, dense=True,
+            password=True, can_reveal_password=True,
+            hint_text=(
+                f"Em branco = usa a variável de ambiente '{fis.api_token_env}'"
+                if fis.api_token_env else "Token fornecido pelo gateway fiscal contratado"
+            ),
+        )
+        campo_fis_cnpj = ft.TextField(label="CNPJ do emitente", value=fis.cnpj_emitente, width=220, dense=True)
+
+        def salvar_fiscal(e):
+            valores = {
+                "ativo": campo_fis_ativo.value,
+                "provedor": campo_fis_provedor.value,
+                "ambiente": campo_fis_ambiente.value,
+                "api_url": campo_fis_url.value,
+                "api_token": campo_fis_token.value,
+                "cnpj_emitente": campo_fis_cnpj.value,
+            }
+            configuracoes.salvar(self.conn, "fiscal", valores)
+            for chave, valor in valores.items():
+                setattr(self.schema.fiscal, chave, valor)
+            audit.registrar(self.conn, "_configuracoes", None, "editar_fiscal",
+                             self.usuario_logado["usuario"])
+            self._notificar("Configuração fiscal salva.")
+
+        # --- Cupom de impressão, por tabela -----------------------------
+        opcoes_tabela_cupom = [(t.nome, t.label) for t in self.schema.tabelas]
+        container_cupom = ft.Container()
+
+        def montar_secao_cupom(nome_tabela: str) -> ft.Control:
+            tabela_cupom = self.schema.tabela(nome_tabela)
+            imp = tabela_cupom.impressao
+
+            sw_ativo = ft.Switch(label="Ativo", value=imp.ativo)
+            campo_titulo = ft.TextField(label="Título do cupom", value=imp.titulo, width=280, dense=True)
+            campo_rodape = ft.TextField(label="Rodapé", value=imp.rodape, width=280, dense=True)
+            sw_auto = ft.Switch(
+                label="Imprimir automaticamente ao salvar um registro novo",
+                value=imp.auto_imprimir,
+            )
+            campos_selecionados = set(imp.campos)
+            checkboxes_cupom = {
+                c.nome: ft.Checkbox(label=c.label, value=c.nome in campos_selecionados)
+                for c in tabela_cupom.campos
+            }
+
+            def salvar_cupom(e):
+                valores = {
+                    "ativo": sw_ativo.value,
+                    "titulo": campo_titulo.value,
+                    "campos": [nome for nome, cb in checkboxes_cupom.items() if cb.value],
+                    "rodape": campo_rodape.value,
+                    "auto_imprimir": sw_auto.value,
+                }
+                configuracoes.salvar(self.conn, configuracoes.chave_cupom(tabela_cupom.nome), valores)
+                for chave, valor in valores.items():
+                    setattr(tabela_cupom.impressao, chave, valor)
+                audit.registrar(self.conn, "_configuracoes", None, "editar_cupom",
+                                 self.usuario_logado["usuario"], tabela_cupom.nome)
+                self._notificar(f"Cupom de '{tabela_cupom.label}' salvo.")
+
+            return ft.Column(
+                [
+                    sw_ativo,
+                    campo_titulo,
+                    ft.Text("Campos que entram no cupom:", size=12),
+                    (
+                        ft.Column(list(checkboxes_cupom.values()), spacing=2)
+                        if checkboxes_cupom
+                        else ft.Text("Nenhum campo nesta tabela.", size=11, color=ft.Colors.GREY_600)
+                    ),
+                    campo_rodape,
+                    sw_auto,
+                    ft.ElevatedButton("Salvar cupom", icon=ft.Icons.SAVE, on_click=salvar_cupom),
+                ],
+                spacing=8,
+            )
+
+        campo_tabela_cupom = ft.Dropdown(
+            label="Tabela", width=220, dense=True,
+            value=opcoes_tabela_cupom[0][0] if opcoes_tabela_cupom else None,
+            options=[ft.dropdown.Option(key=n, text=l) for n, l in opcoes_tabela_cupom],
+        )
+
+        def trocar_tabela_cupom(e=None):
+            if campo_tabela_cupom.value:
+                container_cupom.content = montar_secao_cupom(campo_tabela_cupom.value)
+                self.page.update()
+
+        campo_tabela_cupom.on_select = trocar_tabela_cupom
+        if opcoes_tabela_cupom:
+            container_cupom.content = montar_secao_cupom(opcoes_tabela_cupom[0][0])
+
+        self.area_conteudo.content = ft.Column(
+            [
+                ft.Text("Configurações", size=20, weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Essas configurações ficam salvas neste sistema (não no arquivo "
+                    "schema.yaml) e valem a partir de agora, sem precisar reiniciar.",
+                    size=12, color=ft.Colors.GREY_600,
+                ),
+                ft.Divider(),
+                ft.Text("Impressora térmica", weight=ft.FontWeight.BOLD),
+                campo_imp_ativo,
+                ft.Row([campo_imp_conexao, campo_imp_colunas], scroll=ft.ScrollMode.AUTO),
+                ft.Row([campo_imp_vendor, campo_imp_product], scroll=ft.ScrollMode.AUTO),
+                ft.Row([campo_imp_ip, campo_imp_porta], scroll=ft.ScrollMode.AUTO),
+                campo_imp_serial,
+                mensagem_imp,
+                ft.ElevatedButton("Salvar impressora", icon=ft.Icons.SAVE, on_click=salvar_impressora),
+                ft.Divider(),
+                ft.Text("Nota fiscal (gateway)", weight=ft.FontWeight.BOLD),
+                campo_fis_ativo,
+                ft.Row([campo_fis_provedor, campo_fis_ambiente], scroll=ft.ScrollMode.AUTO),
+                campo_fis_url,
+                campo_fis_token,
+                campo_fis_cnpj,
+                ft.ElevatedButton("Salvar fiscal", icon=ft.Icons.SAVE, on_click=salvar_fiscal),
+                ft.Divider(),
+                ft.Text("Cupom de impressão (por tabela)", weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "A nota fiscal (NF-e/NFC-e) segue o padrão exigido pela SEFAZ e não "
+                    "é editável aqui -- isso é só o cupom não fiscal impresso na térmica.",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+                campo_tabela_cupom,
+                container_cupom,
+            ],
+            spacing=10, scroll=ft.ScrollMode.AUTO, expand=True,
+        )
+        self.page.update()
+
+    # ------------------------------------------------------------------
     # BACKUP
     # ------------------------------------------------------------------
     def _tela_backup(self):
@@ -1120,6 +1313,7 @@ class SistemaApp:
 def rodar_app(schema: Schema):
     conn = db.conectar(schema.banco_path)
     db.garantir_schema(conn, schema)
+    configuracoes.aplicar_no_schema(conn, schema)
 
     def main(page: ft.Page):
         SistemaApp(page, schema, conn)

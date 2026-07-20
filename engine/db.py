@@ -104,6 +104,15 @@ def _criar_tabela_sistema(conn: sqlite3.Connection):
             resolvido INTEGER NOT NULL DEFAULT 0
         )
     """)
+    # Configurações de impressora e fiscal ajustáveis pelo admin em tempo
+    # de execução (tela "Configurações"), sobrepondo o que está no YAML
+    # sem precisar editar o arquivo nem reiniciar com outro schema.
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _configuracoes (
+            chave TEXT PRIMARY KEY,
+            valor TEXT
+        )
+    """)
     conn.commit()
 
 

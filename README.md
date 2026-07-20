@@ -293,6 +293,46 @@ resolveria o problema.
    exata do provedor escolhido (o formato varia entre eles).
 5. Teste tudo em ambiente de homologação antes de trocar pra produção.
 
+## Configurações pela conta admin (impressora, fiscal e cupom)
+
+Além de configurar impressora e fiscal no YAML (`sistema.impressora` e
+`sistema.fiscal`), a conta admin pode ajustar tudo isso **dentro do
+próprio sistema rodando**, na aba "Configurações" -- sem editar arquivo
+nem reiniciar:
+
+- **Impressora**: ativo, tipo de conexão (usb/rede/serial/arquivo),
+  vendor/product ID, IP/porta, dispositivo serial, colunas do papel.
+- **Fiscal**: ativo, provedor, ambiente (homologação/produção), URL da
+  API, **token de acesso** e CNPJ do emitente.
+- **Cupom de impressão, por tabela**: escolhe a tabela num dropdown e
+  ajusta título, quais campos entram, rodapé e se imprime
+  automaticamente ao salvar -- o mesmo que dá pra configurar no editor
+  visual de schema, só que aqui é o admin ajustando o sistema já
+  entregue, sem precisar de quem programou.
+
+  > A **nota fiscal** (NF-e/NFC-e) não entra aqui -- ela segue o layout
+  > exigido pela SEFAZ e não é customizável. Isso é só o cupom não
+  > fiscal impresso na térmica (recibo simples).
+
+Isso é pensado pra quem entrega o sistema pronto pra um cliente: em vez
+de reabrir o YAML (ou pedir pra você) toda vez que o cliente troca de
+provedor fiscal, contrata uma impressora nova, passa de homologação pra
+produção, ou quer mudar o texto do cupom, o próprio admin resolve pela
+tela.
+
+**Prioridade**: o que é salvo em Configurações sobrepõe o YAML (que
+continua servindo como valor inicial/padrão do schema). O token digitado
+na tela tem prioridade sobre `api_token_env` -- se nenhum dos dois for
+usado, cai no comportamento de sempre (variável de ambiente).
+
+> **Sobre segurança**: diferente do YAML (que costuma ir pra controle de
+> versão, por isso nunca deve ter o token), essas configurações ficam no
+> banco `.db` do próprio sistema -- local, específico daquele cliente, e
+> não versionado. É o mesmo nível de confiança que o banco já tem hoje
+> (ele guarda senhas com hash e todos os dados dos clientes). Ainda
+> assim, o token fica em texto legível ali dentro; trate o arquivo `.db`
+> com o mesmo cuidado que trataria qualquer outra credencial local.
+
 ## Adicionando um campo depois que o sistema já está em produção
 
 Só editar o YAML e adicionar o campo na lista de `campos` da tabela.

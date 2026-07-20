@@ -291,3 +291,14 @@ tabelas:
         label: "CFOP"
         tipo: texto
         obrigatorio: false
+
+    # Baixa automática de estoque: ao lançar um item de venda, desconta
+    # "quantidade" do campo "quantidade" do produto referenciado (e
+    # devolve se o item for editado/excluído depois). Sem isso, o
+    # estoque de produtos precisaria ser ajustado manualmente a cada venda.
+    baixa_estoque:
+      ativo: true
+      tabela_estoque: produtos
+      campo_produto: produto_id
+      campo_quantidade: quantidade
+      campo_estoque: quantidade

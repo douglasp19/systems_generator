@@ -8,7 +8,7 @@ import os
 import flet as ft
 
 from engine.schema_loader import Schema, Tabela, Campo
-from engine import db, auth, audit, export, backup, printer, fiscal, preferencias
+from engine import db, auth, audit, export, backup, printer, fiscal, preferencias, estoque
 
 
 def _texto_largura(valor) -> str:
@@ -625,7 +625,17 @@ class SistemaApp:
 
                 dados[c.nome] = valor
 
+            aviso_estoque = ""
+
             if editando:
+                if tabela.baixa_estoque.ativo:
+                    # edição = devolve o efeito do registro antigo e aplica
+                    # o do novo, cobrindo tanto troca de quantidade quanto
+                    # troca do produto selecionado sem calcular diferença
+                    estoque.reverter(self.conn, self.schema, tabela, registro)
+                    resultado_estoque = estoque.aplicar(self.conn, self.schema, tabela, dados)
+                    if resultado_estoque.estoque_negativo:
+                        aviso_estoque = f" Atenção: {resultado_estoque.mensagem}"
                 db.atualizar(self.conn, tabela, registro["id"], dados)
                 audit.registrar(self.conn, tabela.nome, registro["id"], "editar",
                                  self.usuario_logado["usuario"])
@@ -633,6 +643,10 @@ class SistemaApp:
                 novo_id = db.inserir(self.conn, tabela, dados)
                 audit.registrar(self.conn, tabela.nome, novo_id, "criar",
                                  self.usuario_logado["usuario"])
+                if tabela.baixa_estoque.ativo:
+                    resultado_estoque = estoque.aplicar(self.conn, self.schema, tabela, dados)
+                    if resultado_estoque.estoque_negativo:
+                        aviso_estoque = f" Atenção: {resultado_estoque.mensagem}"
                 if tabela.impressao.ativo and tabela.impressao.auto_imprimir:
                     registro_novo = db.obter(self.conn, tabela, novo_id)
                     registro_exibicao = db.registro_para_exibicao(self.conn, tabela, registro_novo)
@@ -640,7 +654,7 @@ class SistemaApp:
 
             self.page.pop_dialog()
             recarregar()
-            self._notificar("Salvo com sucesso.")
+            self._notificar("Salvo com sucesso." + aviso_estoque)
 
         altura_conteudo = min(60 + 70 * len(tabela.campos), 500)
 
@@ -746,6 +760,8 @@ class SistemaApp:
 
     def _confirmar_exclusao(self, tabela: Tabela, registro: dict):
         def excluir(e):
+            if tabela.baixa_estoque.ativo:
+                estoque.reverter(self.conn, self.schema, tabela, registro)
             db.excluir(self.conn, tabela, registro["id"])
             audit.registrar(self.conn, tabela.nome, registro["id"], "excluir",
                              self.usuario_logado["usuario"])

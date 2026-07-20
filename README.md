@@ -340,9 +340,11 @@ na hora.
 
 Cada tabela também tem, na mesma tela, as seções de **alerta de estoque
 mínimo** (liga/desliga e escolhe os campos de quantidade/mínimo por
-dropdown) e **impressão de cupom** (título, quais campos entram, rodapé,
-e se imprime automaticamente ao salvar). Não precisa mais editar o YAML
-na mão pra essas duas funcionalidades.
+dropdown), **baixa automática de estoque** (liga/desliga e escolhe, por
+dropdown, a tabela de estoque e os campos de produto/quantidade) e
+**impressão de cupom** (título, quais campos entram, rodapé, e se
+imprime automaticamente ao salvar). Não precisa mais editar o YAML na
+mão pra essas funcionalidades.
 
 Seções mais avançadas que o editor ainda não monta visualmente
 (configuração da impressora física em `sistema.impressora`, gateway
@@ -390,6 +392,39 @@ Com isso, sempre que algum registro tiver `quantidade < estoque_minimo`:
 a tela de lista mostra um banner no topo listando os itens afetados
 (com a quantidade atual e o mínimo configurado), e a célula de
 quantidade daquele registro fica destacada em vermelho na tabela.
+
+## Baixa automática de estoque
+
+Numa tabela de "itens" (ex: `itens_venda`), ligue a quantidade lançada
+ali com o estoque do produto referenciado -- sem isso, o estoque
+precisaria ser ajustado manualmente a cada venda:
+
+```yaml
+baixa_estoque:
+  ativo: true
+  tabela_estoque: produtos       # tabela que guarda o estoque
+  campo_produto: produto_id      # campo (referencia) que aponta pro produto
+  campo_quantidade: quantidade   # campo desta tabela com a quantidade vendida
+  campo_estoque: quantidade      # campo de estoque, na tabela de produtos
+```
+
+Comportamento:
+
+- **Criar** um item novo desconta `campo_quantidade` do estoque do
+  produto referenciado.
+- **Editar** um item devolve o efeito do valor antigo e aplica o novo
+  -- cobre tanto mudança de quantidade quanto troca do produto
+  selecionado, sem precisar calcular diferença.
+- **Excluir** um item devolve a quantidade ao estoque.
+- **Estoque insuficiente**: o sistema **permite a venda mesmo assim**
+  (não bloqueia) e avisa na hora ("Atenção: estoque de 'X' ficou
+  negativo (-N)."), pra loja que às vezes vende por encomenda antes de
+  repor. Se quiser bloquear em vez de avisar, é uma mudança pontual em
+  `engine/estoque.py`.
+
+Combina bem com o **alerta de estoque mínimo** acima (que avisa quando o
+estoque fica baixo) e o **filtro de colunas** abaixo (pra destacar só a
+coluna de quantidade na lista, por exemplo).
 
 ## Colunas ajustáveis e filtro de colunas
 

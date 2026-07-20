@@ -135,6 +135,12 @@ tabelas:
     obrigatorio: true
     minimo: 0
   abas: []
+  baixa_estoque:
+    ativo: true
+    tabela_estoque: produtos
+    campo_produto: produto_id
+    campo_quantidade: quantidade
+    campo_estoque: quantidade
 - nome: nova_tabela
   label: Nova Tabela
   icone: table_rows

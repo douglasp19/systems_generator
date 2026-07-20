@@ -358,6 +358,8 @@ class SchemaEditorApp:
                 ft.Divider(),
                 self._secao_alerta_estoque(tabela),
                 ft.Divider(),
+                self._secao_baixa_estoque(tabela),
+                ft.Divider(),
                 self._secao_impressao(tabela),
             ],
             spacing=10, scroll=ft.ScrollMode.AUTO, expand=True,
@@ -581,6 +583,110 @@ class SchemaEditorApp:
                 ),
                 switch_ativo,
                 conteudo_extra,
+            ],
+            spacing=6,
+        )
+
+    # ------------------------------------------------------------------
+    # BAIXA AUTOMÁTICA DE ESTOQUE
+    # ------------------------------------------------------------------
+    def _campos_numericos_de(self, nome_tabela: str | None) -> list[str]:
+        alvo = next((t for t in self.bruto.get("tabelas", []) if t.get("nome") == nome_tabela), None)
+        if not alvo:
+            return []
+        return [c.get("nome", "") for c in alvo.get("campos", []) if c.get("tipo") in ("inteiro", "decimal")]
+
+    def _secao_baixa_estoque(self, tabela: dict) -> ft.Control:
+        config = tabela.get("baixa_estoque") or {}
+        campos_referencia = [c.get("nome", "") for c in tabela.get("campos", []) if c.get("tipo") == "referencia"]
+        campos_numericos_aqui = self._campos_numericos_de(tabela.get("nome"))
+        outras_tabelas = [t.get("nome", "") for t in self.bruto.get("tabelas", []) if t is not tabela]
+
+        if not campos_referencia or not campos_numericos_aqui or not outras_tabelas:
+            return ft.Column(
+                [
+                    ft.Text("Baixa automática de estoque", weight=ft.FontWeight.BOLD),
+                    ft.Text(
+                        "Precisa de: um campo do tipo referência (pro produto), um campo "
+                        "numérico nesta tabela (a quantidade) e outra tabela pra guardar "
+                        "o estoque.",
+                        size=11, color=ft.Colors.GREY_600,
+                    ),
+                ],
+                spacing=6,
+            )
+
+        switch_ativo = ft.Switch(label="Ativo", value=bool(config.get("ativo", False)))
+        campo_tabela_estoque = ft.Dropdown(
+            label="Tabela de estoque", width=200, dense=True,
+            value=config.get("tabela_estoque") if config.get("tabela_estoque") in outras_tabelas else None,
+            options=[ft.dropdown.Option(n) for n in outras_tabelas],
+        )
+        campo_produto = ft.Dropdown(
+            label="Campo do produto (referência)", width=230, dense=True,
+            value=config.get("campo_produto") if config.get("campo_produto") in campos_referencia else None,
+            options=[ft.dropdown.Option(n) for n in campos_referencia],
+        )
+        campo_quantidade = ft.Dropdown(
+            label="Campo de quantidade (aqui)", width=200, dense=True,
+            value=config.get("campo_quantidade") if config.get("campo_quantidade") in campos_numericos_aqui else None,
+            options=[ft.dropdown.Option(n) for n in campos_numericos_aqui],
+        )
+        opcoes_estoque_iniciais = self._campos_numericos_de(campo_tabela_estoque.value)
+        campo_estoque = ft.Dropdown(
+            label="Campo de estoque (na tabela acima)", width=230, dense=True,
+            value=config.get("campo_estoque") if config.get("campo_estoque") in opcoes_estoque_iniciais else None,
+            options=[ft.dropdown.Option(n) for n in opcoes_estoque_iniciais],
+        )
+
+        linha1 = ft.Row([campo_tabela_estoque, campo_produto], scroll=ft.ScrollMode.AUTO)
+        linha2 = ft.Row([campo_quantidade, campo_estoque], scroll=ft.ScrollMode.AUTO)
+        linha1.visible = switch_ativo.value
+        linha2.visible = switch_ativo.value
+
+        def salvar(e=None):
+            linha1.visible = switch_ativo.value
+            linha2.visible = switch_ativo.value
+            if switch_ativo.value and all([
+                campo_tabela_estoque.value, campo_produto.value,
+                campo_quantidade.value, campo_estoque.value,
+            ]):
+                tabela["baixa_estoque"] = {
+                    "ativo": True,
+                    "tabela_estoque": campo_tabela_estoque.value,
+                    "campo_produto": campo_produto.value,
+                    "campo_quantidade": campo_quantidade.value,
+                    "campo_estoque": campo_estoque.value,
+                }
+            elif not switch_ativo.value:
+                tabela.pop("baixa_estoque", None)
+            self.page.update()
+
+        def trocar_tabela_estoque(e=None):
+            opcoes = self._campos_numericos_de(campo_tabela_estoque.value)
+            campo_estoque.options = [ft.dropdown.Option(n) for n in opcoes]
+            if campo_estoque.value not in opcoes:
+                campo_estoque.value = None
+            salvar()
+
+        switch_ativo.on_change = salvar
+        campo_tabela_estoque.on_select = trocar_tabela_estoque
+        campo_produto.on_select = salvar
+        campo_quantidade.on_select = salvar
+        campo_estoque.on_select = salvar
+
+        return ft.Column(
+            [
+                ft.Text("Baixa automática de estoque", weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Ao salvar um registro novo aqui, desconta a quantidade do estoque "
+                    "do produto referenciado -- e devolve se o registro for editado ou "
+                    "excluído depois.",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+                switch_ativo,
+                linha1,
+                linha2,
             ],
             spacing=6,
         )

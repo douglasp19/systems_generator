@@ -144,6 +144,24 @@ class AlertaEstoqueConfig:
     campo_minimo: Optional[str] = None
 
 
+@dataclass
+class BaixaEstoqueConfig:
+    """Baixa automática de estoque: ao criar/editar/excluir um registro
+    nesta tabela (ex: um item de venda), ajusta a quantidade em estoque
+    do produto referenciado, sem precisar de nenhuma ação manual.
+
+    'tabela_estoque' é a tabela que guarda o estoque (ex: produtos).
+    'campo_produto' é o campo (tipo referencia) desta tabela que aponta
+    pro produto. 'campo_quantidade' é o campo numérico desta tabela com
+    a quantidade vendida/usada. 'campo_estoque' é o campo numérico, na
+    tabela de estoque, que guarda a quantidade disponível."""
+    ativo: bool = False
+    tabela_estoque: Optional[str] = None
+    campo_produto: Optional[str] = None
+    campo_quantidade: Optional[str] = None
+    campo_estoque: Optional[str] = None
+
+
 def encontrar_campo_fk_para(tabela_filha: "Tabela", nome_tabela_pai: str) -> Optional[Campo]:
     """Dado uma tabela de itens (filha) e o nome da tabela pai (ex: 'vendas'),
     encontra automaticamente qual campo dela é a referência de volta pro pai.
@@ -165,6 +183,7 @@ class Tabela:
     impressao: ImpressaoConfig = field(default_factory=ImpressaoConfig)
     fiscal: FiscalConfig = field(default_factory=FiscalConfig)
     alerta_estoque: AlertaEstoqueConfig = field(default_factory=AlertaEstoqueConfig)
+    baixa_estoque: BaixaEstoqueConfig = field(default_factory=BaixaEstoqueConfig)
 
     def campo(self, nome: str) -> Optional[Campo]:
         for c in self.campos:
@@ -241,6 +260,9 @@ def carregar_schema(caminho_yaml: str) -> Schema:
         alerta_estoque_bruto = t.get("alerta_estoque", {})
         alerta_estoque = AlertaEstoqueConfig(**alerta_estoque_bruto) if alerta_estoque_bruto else AlertaEstoqueConfig()
 
+        baixa_estoque_bruto = t.get("baixa_estoque", {})
+        baixa_estoque = BaixaEstoqueConfig(**baixa_estoque_bruto) if baixa_estoque_bruto else BaixaEstoqueConfig()
+
         tabelas.append(
             Tabela(
                 nome=t["nome"],
@@ -251,6 +273,7 @@ def carregar_schema(caminho_yaml: str) -> Schema:
                 impressao=impressao,
                 fiscal=fiscal_tabela,
                 alerta_estoque=alerta_estoque,
+                baixa_estoque=baixa_estoque,
             )
         )
 

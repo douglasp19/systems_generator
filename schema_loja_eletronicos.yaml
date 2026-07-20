@@ -64,7 +64,13 @@ tabelas:
     tipo: texto
     obrigatorio: true
     buscavel: true
-  abas: []
+  abas:
+  - nome: nome
+    campos:
+    - nome
+  - nome: Nova aba
+    campos:
+    - cpf
 - nome: vendas
   label: Vendas
   icone: point_of_sale
@@ -128,4 +134,9 @@ tabelas:
     tipo: decimal
     obrigatorio: true
     minimo: 0
+  abas: []
+- nome: nova_tabela
+  label: Nova Tabela
+  icone: table_rows
+  campos: []
   abas: []

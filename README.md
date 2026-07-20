@@ -333,12 +333,25 @@ python main.py --editor schema_clientex.yaml # abre um schema existente
 
 A tela permite: criar/remover/reordenar tabelas, adicionar/editar/remover
 campos (com todas as opções: tipo, obrigatório, buscável, valor padrão,
-mínimo/máximo, referência a outra tabela) e configurar abas do
-formulário. O botão "Salvar" grava o `.yaml` no caminho informado, e
-"Rodar sistema" abre o sistema gerado numa janela separada para testar
-na hora. Seções mais avançadas que o editor ainda não monta visualmente
-(impressora, gateway fiscal) são preservadas como estão no arquivo ao
-salvar — continue ajustando essas partes direto no YAML.
+mínimo/máximo, largura de coluna, referência a outra tabela) e configurar
+abas do formulário. O botão "Salvar" grava o `.yaml` no caminho informado,
+e "Rodar sistema" abre o sistema gerado numa janela separada para testar
+na hora.
+
+Cada tabela também tem, na mesma tela, as seções de **alerta de estoque
+mínimo** (liga/desliga e escolhe os campos de quantidade/mínimo por
+dropdown) e **impressão de cupom** (título, quais campos entram, rodapé,
+e se imprime automaticamente ao salvar). Não precisa mais editar o YAML
+na mão pra essas duas funcionalidades.
+
+Seções mais avançadas que o editor ainda não monta visualmente
+(configuração da impressora física em `sistema.impressora`, gateway
+fiscal em `sistema.fiscal`/`fiscal:` por tabela) são preservadas como
+estão no arquivo ao salvar — continue ajustando essas partes direto no
+YAML. **Permissões por usuário** também ficam de fora de propósito: elas
+não são parte do schema (arquivo `.yaml`), e sim de cada conta de usuário
+já criada num sistema rodando -- configure-as na tela de Usuários do
+próprio sistema (veja a seção de permissões mais abaixo), não no editor.
 
 ## Validações customizadas
 

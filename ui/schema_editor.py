@@ -355,6 +355,10 @@ class SchemaEditorApp:
                     size=11, color=ft.Colors.GREY_600,
                 ),
                 lista_abas,
+                ft.Divider(),
+                self._secao_alerta_estoque(tabela),
+                ft.Divider(),
+                self._secao_impressao(tabela),
             ],
             spacing=10, scroll=ft.ScrollMode.AUTO, expand=True,
         )
@@ -442,6 +446,144 @@ class SchemaEditorApp:
         del tabela["abas"][idx]
         self._renderizar_detalhe_tabela()
         self.page.update()
+
+    # ------------------------------------------------------------------
+    # ALERTA DE ESTOQUE MÍNIMO
+    # ------------------------------------------------------------------
+    def _secao_alerta_estoque(self, tabela: dict) -> ft.Control:
+        config = tabela.get("alerta_estoque") or {}
+        campos_numericos = [
+            c.get("nome", "") for c in tabela.get("campos", [])
+            if c.get("tipo") in ("inteiro", "decimal")
+        ]
+
+        if len(campos_numericos) < 2:
+            return ft.Column(
+                [
+                    ft.Text("Alerta de estoque mínimo", weight=ft.FontWeight.BOLD),
+                    ft.Text(
+                        "Adicione pelo menos dois campos numéricos (inteiro/decimal) "
+                        "nesta tabela para habilitar -- um de quantidade e um de mínimo.",
+                        size=11, color=ft.Colors.GREY_600,
+                    ),
+                ],
+                spacing=6,
+            )
+
+        switch_ativo = ft.Switch(label="Ativo", value=bool(config.get("ativo", False)))
+        campo_qtd = ft.Dropdown(
+            label="Campo de quantidade", width=220, dense=True,
+            value=config.get("campo_quantidade") if config.get("campo_quantidade") in campos_numericos else None,
+            options=[ft.dropdown.Option(n) for n in campos_numericos],
+        )
+        campo_min = ft.Dropdown(
+            label="Campo de estoque mínimo", width=220, dense=True,
+            value=config.get("campo_minimo") if config.get("campo_minimo") in campos_numericos else None,
+            options=[ft.dropdown.Option(n) for n in campos_numericos],
+        )
+        linha_campos = ft.Row([campo_qtd, campo_min], scroll=ft.ScrollMode.AUTO)
+        linha_campos.visible = switch_ativo.value
+
+        def salvar(e=None):
+            linha_campos.visible = switch_ativo.value
+            if switch_ativo.value and campo_qtd.value and campo_min.value:
+                tabela["alerta_estoque"] = {
+                    "ativo": True,
+                    "campo_quantidade": campo_qtd.value,
+                    "campo_minimo": campo_min.value,
+                }
+            elif not switch_ativo.value:
+                tabela.pop("alerta_estoque", None)
+            self.page.update()
+
+        switch_ativo.on_change = salvar
+        campo_qtd.on_select = salvar
+        campo_min.on_select = salvar
+
+        return ft.Column(
+            [
+                ft.Text("Alerta de estoque mínimo", weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Mostra um aviso na tela de lista quando a quantidade ficar "
+                    "abaixo do mínimo configurado.",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+                switch_ativo,
+                linha_campos,
+            ],
+            spacing=6,
+        )
+
+    # ------------------------------------------------------------------
+    # IMPRESSÃO DE CUPOM
+    # ------------------------------------------------------------------
+    def _secao_impressao(self, tabela: dict) -> ft.Control:
+        config = tabela.get("impressao") or {}
+        nomes_campos = [c.get("nome", "") for c in tabela.get("campos", [])]
+        campos_selecionados = set(config.get("campos", []))
+
+        switch_ativo = ft.Switch(label="Ativo", value=bool(config.get("ativo", False)))
+        campo_titulo = ft.TextField(label="Título do cupom", value=config.get("titulo", ""), width=250, dense=True)
+        campo_rodape = ft.TextField(label="Rodapé", value=config.get("rodape", ""), width=250, dense=True)
+        switch_auto = ft.Switch(
+            label="Imprimir automaticamente ao salvar um registro novo",
+            value=bool(config.get("auto_imprimir", False)),
+        )
+        checkboxes_campos = {
+            nome: ft.Checkbox(label=nome, value=nome in campos_selecionados)
+            for nome in nomes_campos
+        }
+
+        conteudo_extra = ft.Column(
+            [
+                campo_titulo,
+                ft.Text("Campos que entram no cupom:", size=12),
+                (
+                    ft.Column(list(checkboxes_campos.values()), spacing=2)
+                    if checkboxes_campos
+                    else ft.Text("Nenhum campo nesta tabela.", size=11, color=ft.Colors.GREY_600)
+                ),
+                campo_rodape,
+                switch_auto,
+            ],
+            spacing=8,
+        )
+        conteudo_extra.visible = switch_ativo.value
+
+        def salvar(e=None):
+            conteudo_extra.visible = switch_ativo.value
+            if switch_ativo.value:
+                tabela["impressao"] = {
+                    "ativo": True,
+                    "titulo": campo_titulo.value,
+                    "campos": [nome for nome, cb in checkboxes_campos.items() if cb.value],
+                    "rodape": campo_rodape.value,
+                    "auto_imprimir": switch_auto.value,
+                }
+            else:
+                tabela.pop("impressao", None)
+            self.page.update()
+
+        switch_ativo.on_change = salvar
+        campo_titulo.on_change = salvar
+        campo_rodape.on_change = salvar
+        switch_auto.on_change = salvar
+        for cb in checkboxes_campos.values():
+            cb.on_change = salvar
+
+        return ft.Column(
+            [
+                ft.Text("Impressão de cupom (impressora térmica)", weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Configure a impressora uma vez em sistema.impressora no YAML "
+                    "(usb/rede/serial/arquivo) -- aqui você só liga o cupom desta tabela.",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+                switch_ativo,
+                conteudo_extra,
+            ],
+            spacing=6,
+        )
 
     # ------------------------------------------------------------------
     # DIÁLOGO DE CAMPO (criar/editar)

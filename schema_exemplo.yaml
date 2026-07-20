@@ -219,12 +219,16 @@ tabelas:
         campos: [observacoes]
 
     # Cupom não fiscal impresso na impressora térmica (recibo simples,
-    # não confundir com a NF-e/DANFE emitida pelo gateway fiscal abaixo)
+    # não confundir com a NF-e/DANFE emitida pelo gateway fiscal abaixo).
+    # auto_imprimir: true faria o cupom sair sozinho ao salvar a venda --
+    # aqui deixamos manual (botão de impressora na lista) de propósito,
+    # já que essa venda ainda depende de emitir a NF-e depois.
     impressao:
       ativo: true
       titulo: "Recibo de Venda"
       campos: [cliente_id, data_venda, valor_total, forma_pagamento]
       rodape: "Obrigado pela preferência!"
+      auto_imprimir: false
 
     # Emissão de NF-e (nota que acompanha a mercadoria, gera o DANFE).
     # Precisa de um destinatário (campo_destinatario) e de uma tabela

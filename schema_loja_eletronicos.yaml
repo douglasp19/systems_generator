@@ -89,6 +89,7 @@ tabelas:
     - forma_pagamento
     - valor_total
     rodape: Volte sempre!
+    auto_imprimir: true
   fiscal:
     ativo: true
     tipo: nfce

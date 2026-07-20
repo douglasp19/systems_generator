@@ -59,6 +59,8 @@ class SistemaApp:
                 self.usuario_logado = usr
                 audit.registrar(self.conn, "_login", None, "login", usr["usuario"])
                 self._mostrar_app_principal()
+                if self.schema.fiscal.ativo:
+                    self._tentar_reenviar_pendentes_silencioso()
             else:
                 texto_erro.value = "Usuário ou senha inválidos."
                 self.page.update()
@@ -95,20 +97,23 @@ class SistemaApp:
         logado. Admin sempre vê tudo. Usuário comum só vê o que o admin
         marcou explicitamente ao criar/editar a conta -- enquanto isso não
         for configurado, vê tudo (comportamento padrão)."""
+        fiscal_ativo = self.schema.fiscal.ativo
+
         if self.usuario_logado["papel"] == "admin":
-            return list(self.schema.tabelas), True, True
+            return list(self.schema.tabelas), True, True, fiscal_ativo
 
         if not auth.permissoes_configuradas(self.conn, self.usuario_logado["id"]):
-            return list(self.schema.tabelas), True, True
+            return list(self.schema.tabelas), True, True, fiscal_ativo
 
         permitidas = auth.permissoes_usuario(self.conn, self.usuario_logado["id"])
         tabelas_visiveis = [t for t in self.schema.tabelas if t.nome in permitidas]
-        return tabelas_visiveis, "_auditoria" in permitidas, "_backup" in permitidas
+        mostrar_fiscal_pendente = fiscal_ativo and "_fiscal_pendente" in permitidas
+        return tabelas_visiveis, "_auditoria" in permitidas, "_backup" in permitidas, mostrar_fiscal_pendente
 
     def _mostrar_app_principal(self):
         self.page.controls.clear()
 
-        tabelas_visiveis, mostrar_auditoria, mostrar_backup = self._abas_visiveis()
+        tabelas_visiveis, mostrar_auditoria, mostrar_backup, mostrar_fiscal_pendente = self._abas_visiveis()
 
         destinos = []
         for t in tabelas_visiveis:
@@ -120,6 +125,8 @@ class SistemaApp:
             )
         if mostrar_auditoria:
             destinos.append(ft.NavigationRailDestination(icon=ft.Icons.HISTORY, label="Auditoria"))
+        if mostrar_fiscal_pendente:
+            destinos.append(ft.NavigationRailDestination(icon=ft.Icons.RECEIPT_LONG, label="Notas Pendentes"))
         if self.usuario_logado["papel"] == "admin":
             destinos.append(ft.NavigationRailDestination(icon=ft.Icons.PEOPLE, label="Usuários"))
         if mostrar_backup:
@@ -137,6 +144,12 @@ class SistemaApp:
             if mostrar_auditoria:
                 if idx == 0:
                     self._tela_auditoria()
+                    return
+                idx -= 1
+
+            if mostrar_fiscal_pendente:
+                if idx == 0:
+                    self._tela_fiscal_pendente()
                     return
                 idx -= 1
 
@@ -183,6 +196,8 @@ class SistemaApp:
                 self._tela_tabela(tabelas_visiveis[0])
             elif mostrar_auditoria:
                 self._tela_auditoria()
+            elif mostrar_fiscal_pendente:
+                self._tela_fiscal_pendente()
             elif self.usuario_logado["papel"] == "admin":
                 self._tela_usuarios()
             elif mostrar_backup:
@@ -205,7 +220,10 @@ class SistemaApp:
         campo_busca = ft.TextField(
             label="Buscar", prefix_icon=ft.Icons.SEARCH, width=300, dense=True
         )
-        tabela_dados = ft.DataTable(columns=self._colunas_datatable(campos_visiveis, larguras_custom), rows=[])
+        tabela_dados = ft.DataTable(
+            columns=self._colunas_datatable(campos_visiveis, larguras_custom), rows=[],
+            column_spacing=16, horizontal_margin=10,
+        )
         banner_estoque = ft.Container(visible=False)
 
         def recarregar(e=None):
@@ -518,14 +536,30 @@ class SistemaApp:
     def _emitir_nota_fiscal(self, tabela: Tabela, registro: dict):
         try:
             resultado = fiscal.emitir(self.conn, self.schema, tabela, registro)
+        except fiscal.ErroFiscal as e:
+            self._notificar(f"Erro ao emitir nota: {e}")
+            return
+
+        if resultado.sucesso:
             audit.registrar(
                 self.conn, tabela.nome, registro.get("id"),
                 "emitir_nota_simulada" if resultado.simulado else "emitir_nota",
                 self.usuario_logado["usuario"], resultado.mensagem[:200],
             )
             self._mostrar_resultado_fiscal(resultado)
-        except fiscal.ErroFiscal as e:
-            self._notificar(f"Erro ao emitir nota: {e}")
+        else:
+            # falha de comunicação com o gateway (provavelmente sem internet
+            # no momento da venda) -- guarda como pendente em vez de perder
+            # a emissão; será reenviada automaticamente no próximo login.
+            fiscal.enfileirar_pendente(self.conn, tabela.nome, registro.get("id"), resultado.mensagem)
+            audit.registrar(
+                self.conn, tabela.nome, registro.get("id"), "nota_pendente",
+                self.usuario_logado["usuario"], resultado.mensagem[:200],
+            )
+            self._notificar(
+                "Sem conexão com o gateway fiscal. A nota ficou pendente e será "
+                "reenviada automaticamente (veja em \"Notas Pendentes\")."
+            )
 
     def _mostrar_resultado_fiscal(self, resultado: "fiscal.ResultadoEmissao"):
         cor_titulo = ft.Colors.ORANGE if resultado.simulado else ft.Colors.GREEN
@@ -587,6 +621,10 @@ class SistemaApp:
                 novo_id = db.inserir(self.conn, tabela, dados)
                 audit.registrar(self.conn, tabela.nome, novo_id, "criar",
                                  self.usuario_logado["usuario"])
+                if tabela.impressao.ativo and tabela.impressao.auto_imprimir:
+                    registro_novo = db.obter(self.conn, tabela, novo_id)
+                    registro_exibicao = db.registro_para_exibicao(self.conn, tabela, registro_novo)
+                    self._imprimir_cupom(tabela, registro_exibicao)
 
             self.page.pop_dialog()
             recarregar()
@@ -743,6 +781,7 @@ class SistemaApp:
                 for rotulo, largura in zip(rotulos, larguras)
             ],
             rows=linhas,
+            column_spacing=16, horizontal_margin=10,
         )
         self.area_conteudo.content = ft.Column(
             [ft.Text("Auditoria", size=20, weight=ft.FontWeight.BOLD),
@@ -754,9 +793,14 @@ class SistemaApp:
     # ------------------------------------------------------------------
     # USUÁRIOS (apenas admin)
     # ------------------------------------------------------------------
-    # nomes das abas fixas (não são tabelas do schema) que também podem
-    # ser liberadas/restringidas por usuário
-    _ABAS_FIXAS = [("_auditoria", "Auditoria"), ("_backup", "Backup")]
+    def _abas_fixas(self) -> list[tuple[str, str]]:
+        """Nomes das abas fixas (não são tabelas do schema) que também
+        podem ser liberadas/restringidas por usuário. "Notas Pendentes"
+        só aparece aqui quando a emissão fiscal está ativa no schema."""
+        abas = [("_auditoria", "Auditoria"), ("_backup", "Backup")]
+        if self.schema.fiscal.ativo:
+            abas.append(("_fiscal_pendente", "Notas Pendentes"))
+        return abas
 
     def _tela_usuarios(self):
         usuarios = auth.listar_usuarios(self.conn)
@@ -783,6 +827,7 @@ class SistemaApp:
                 for rotulo, largura in zip(rotulos, larguras)
             ] + [ft.DataColumn(ft.Container(ft.Text("Ações", weight=ft.FontWeight.BOLD), width=100))],
             rows=[linha_usuario(u) for u in usuarios],
+            column_spacing=16, horizontal_margin=10,
         )
 
         self.area_conteudo.content = ft.Column(
@@ -824,7 +869,7 @@ class SistemaApp:
         for t in self.schema.tabelas:
             marcado = (t.nome in permissoes_atuais) if ja_configurado else True
             checkboxes_abas[t.nome] = ft.Checkbox(label=t.label, value=marcado)
-        for chave, rotulo in self._ABAS_FIXAS:
+        for chave, rotulo in self._abas_fixas():
             marcado = (chave in permissoes_atuais) if ja_configurado else True
             checkboxes_abas[chave] = ft.Checkbox(label=rotulo, value=marcado)
 
@@ -907,6 +952,115 @@ class SistemaApp:
             ],
         )
         self.page.show_dialog(dialogo)
+
+    # ------------------------------------------------------------------
+    # NOTAS FISCAIS PENDENTES (fila de retry)
+    # ------------------------------------------------------------------
+    def _tentar_reenviar_pendentes_silencioso(self):
+        """Chamado depois do login: tenta reemitir sozinho as notas que
+        ficaram pendentes por falha de conexão. Silencioso quando não há
+        nada pendente; avisa só quando alguma foi resolvida ou continua
+        pendente."""
+        pendentes = fiscal.listar_pendentes(self.conn)
+        if not pendentes:
+            return
+
+        resolvidas = 0
+        for p in pendentes:
+            resultado = fiscal.reprocessar_pendente(self.conn, self.schema, p)
+            if resultado.sucesso:
+                resolvidas += 1
+                audit.registrar(self.conn, p["tabela"], p["registro_id"], "emitir_nota",
+                                 self.usuario_logado["usuario"], "reenviada automaticamente no login")
+
+        if resolvidas:
+            self._notificar(f"{resolvidas} nota(s) fiscal(is) pendente(s) foram reenviadas com sucesso.")
+        else:
+            self._notificar(
+                f"Ainda há {len(pendentes)} nota(s) fiscal(is) pendente(s) "
+                f"(veja em \"Notas Pendentes\")."
+            )
+
+    def _tela_fiscal_pendente(self):
+        pendentes = fiscal.listar_pendentes(self.conn)
+
+        def tentar_uma(pendente: dict):
+            resultado = fiscal.reprocessar_pendente(self.conn, self.schema, pendente)
+            if resultado.sucesso:
+                audit.registrar(self.conn, pendente["tabela"], pendente["registro_id"], "emitir_nota",
+                                 self.usuario_logado["usuario"], "reenviada manualmente")
+                self._notificar(f"Nota #{pendente['registro_id']} ({pendente['tabela']}) emitida com sucesso.")
+            else:
+                self._notificar(f"Ainda sem sucesso: {resultado.mensagem}")
+            self._tela_fiscal_pendente()
+
+        def tentar_todas(e):
+            total = len(fiscal.listar_pendentes(self.conn))
+            resolvidas = 0
+            for p in fiscal.listar_pendentes(self.conn):
+                resultado = fiscal.reprocessar_pendente(self.conn, self.schema, p)
+                if resultado.sucesso:
+                    resolvidas += 1
+                    audit.registrar(self.conn, p["tabela"], p["registro_id"], "emitir_nota",
+                                     self.usuario_logado["usuario"], "reenviada manualmente (lote)")
+            self._notificar(f"{resolvidas} de {total} nota(s) pendente(s) emitida(s) com sucesso.")
+            self._tela_fiscal_pendente()
+
+        rotulos = ["ID", "Tabela", "Registro", "Tentativas", "Criada em", "Último erro"]
+        larguras = [self._largura_texto(r) for r in rotulos]
+        larguras[5] = 160  # último erro precisa de mais espaço (mas sem estourar a janela)
+
+        linhas = [
+            ft.DataRow(cells=[
+                ft.DataCell(ft.Container(ft.Text(str(p["id"])), width=larguras[0])),
+                ft.DataCell(ft.Container(ft.Text(p["tabela"]), width=larguras[1])),
+                ft.DataCell(ft.Container(ft.Text(str(p["registro_id"])), width=larguras[2])),
+                ft.DataCell(ft.Container(ft.Text(str(p["tentativas"])), width=larguras[3])),
+                ft.DataCell(ft.Container(ft.Text(p["criado_em"]), width=larguras[4])),
+                ft.DataCell(
+                    ft.Container(
+                        ft.Text((p["ultimo_erro"] or "")[:60], size=12, tooltip=p["ultimo_erro"]),
+                        width=larguras[5],
+                    )
+                ),
+                ft.DataCell(
+                    ft.IconButton(ft.Icons.REFRESH, icon_size=18, tooltip="Tentar novamente",
+                                  on_click=lambda e, p=p: tentar_uma(p))
+                ),
+            ])
+            for p in pendentes
+        ]
+
+        tabela_dados = ft.DataTable(
+            columns=[
+                ft.DataColumn(ft.Container(ft.Text(rotulo, weight=ft.FontWeight.BOLD), width=largura))
+                for rotulo, largura in zip(rotulos, larguras)
+            ] + [ft.DataColumn(ft.Container(ft.Text("Ações", weight=ft.FontWeight.BOLD), width=80))],
+            rows=linhas,
+            column_spacing=16, horizontal_margin=10,
+        )
+
+        self.area_conteudo.content = ft.Column(
+            [
+                ft.Row(
+                    [
+                        ft.Text("Notas Fiscais Pendentes", size=20, weight=ft.FontWeight.BOLD),
+                        ft.Container(expand=True),
+                        ft.ElevatedButton("Tentar todas agora", icon=ft.Icons.REFRESH, on_click=tentar_todas),
+                    ]
+                ),
+                ft.Text(
+                    "Notas que não puderam ser emitidas por falha de comunicação com o "
+                    "gateway fiscal (ex: sem internet no momento da venda). São reenviadas "
+                    "automaticamente a cada login, ou manualmente aqui."
+                    if pendentes else "Nenhuma nota pendente no momento.",
+                    size=12, color=ft.Colors.GREY_600,
+                ),
+                self._tabela_rolavel(tabela_dados),
+            ],
+            expand=True,
+        )
+        self.page.update()
 
     # ------------------------------------------------------------------
     # BACKUP

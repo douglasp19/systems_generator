@@ -152,6 +152,25 @@ Um botão de impressora aparece na lista dessa tabela.
 Funciona com a maioria das térmicas do mercado (Epson, Elgin, Bematech,
 Tanca...) via protocolo ESC/POS, usando a biblioteca `python-escpos`.
 
+### Impressão automática ao salvar
+
+Por padrão o cupom só sai quando alguém clica no botão de impressora na
+lista. Se o cliente preferir que o cupom saia sozinho assim que a venda é
+cadastrada (sem precisar desse clique extra), ative:
+
+```yaml
+impressao:
+  ativo: true
+  titulo: "Recibo de Venda"
+  campos: [produto_id, quantidade_vendida, valor_total, forma_pagamento]
+  rodape: "Obrigado pela preferência!"
+  auto_imprimir: true
+```
+
+Só imprime sozinho ao **criar** um registro novo (não reimprime quando
+o registro é editado depois) -- o botão manual continua disponível para
+reimprimir uma segunda via quando precisar.
+
 ## Nota fiscal (NF-e / NFC-e) — qual escolher?
 
 **Importante:** emitir nota fiscal não é uma operação local. A nota
@@ -239,6 +258,28 @@ payload completo (destinatário + itens + valor total somado
 automaticamente) e mostra o que seria enviado, sem emitir nada de
 verdade. Isso permite testar o fluxo inteiro antes de contratar um
 provedor.
+
+### Fila de retry (se a internet cair na hora da venda)
+
+Emitir a nota exige internet no momento -- se a conexão cair bem na hora
+de fechar a venda, o sistema não perde a emissão: guarda a nota como
+**pendente** e mostra um aviso (`Sem conexão com o gateway fiscal. A
+nota ficou pendente...`) em vez de travar a venda.
+
+- **Reenvio automático**: a cada login, o sistema tenta reemitir sozinho
+  todas as notas pendentes. Se a internet já tiver voltado, elas saem
+  sem precisar de nenhuma ação.
+- **Tela "Notas Pendentes"**: aparece no menu (abaixo de Auditoria)
+  sempre que `sistema.fiscal.ativo: true` no schema. Lista tentativas e
+  último erro de cada pendência, com um botão para tentar novamente uma
+  nota específica ou todas de uma vez.
+- Assim como Auditoria e Backup, essa aba pode ser liberada ou
+  escondida por usuário no cadastro de conta (veja a seção de
+  permissões mais abaixo, em Usuários).
+
+Isso cobre quedas de conexão -- erros de dados (ex: item faltando,
+destinatário inválido) continuam aparecendo na hora, já que reenviar não
+resolveria o problema.
 
 ### Antes de ir pra produção com um cliente
 
@@ -376,9 +417,7 @@ usam todos os campos, independente do que está oculto só na tela.
 
 ## Próximos passos sugeridos
 
-- **Impressão automática após salvar**: hoje o cupom é impresso com um
-  clique manual; dá pra imprimir automaticamente assim que uma venda é
-  salva, se o cliente preferir.
-- **Fila de emissão fiscal com retry**: se a internet cair no momento da
-  venda, guardar a nota como "pendente" e reenviar automaticamente
-  quando a conexão voltar, em vez de perder a emissão.
+Todos os itens da lista original (editor visual, validações, alertas de
+estoque, templates prontos, impressão automática, fila de retry fiscal)
+já foram implementados. Ideias futuras ficam registradas aqui conforme
+surgirem.

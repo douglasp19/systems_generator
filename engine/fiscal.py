@@ -225,3 +225,84 @@ def _emitir_via_gateway(config_global: FiscalGlobalConfig, token: str, payload: 
         numero_nota=dados.get("numero"),
         url_danfe=dados.get("caminho_danfe") or dados.get("url_danfe") or dados.get("caminho_pdf"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Fila de retry -- notas que falharam por problema de comunicação (ex: sem
+# internet no momento da venda) ficam pendentes e são reenviadas depois,
+# em vez de simplesmente perder a emissão.
+# ---------------------------------------------------------------------------
+
+def enfileirar_pendente(conn: sqlite3.Connection, tabela_nome: str, registro_id, erro: str):
+    """Registra (ou atualiza) uma nota pendente de reenvio. Se já existir
+    uma pendência não resolvida pro mesmo registro, só soma a tentativa
+    em vez de duplicar a linha."""
+    cur = conn.execute(
+        "SELECT id FROM _fiscal_pendente WHERE tabela = ? AND registro_id = ? AND resolvido = 0",
+        (tabela_nome, registro_id),
+    )
+    row = cur.fetchone()
+    if row:
+        conn.execute(
+            "UPDATE _fiscal_pendente SET tentativas = tentativas + 1, ultimo_erro = ?, "
+            "atualizado_em = datetime('now', 'localtime') WHERE id = ?",
+            (erro, row["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO _fiscal_pendente (tabela, registro_id, ultimo_erro) VALUES (?, ?, ?)",
+            (tabela_nome, registro_id, erro),
+        )
+    conn.commit()
+
+
+def listar_pendentes(conn: sqlite3.Connection) -> list[dict]:
+    """Notas ainda não resolvidas, da mais antiga para a mais nova."""
+    cur = conn.execute(
+        "SELECT * FROM _fiscal_pendente WHERE resolvido = 0 ORDER BY criado_em ASC"
+    )
+    return [dict(row) for row in cur.fetchall()]
+
+
+def marcar_resolvido(conn: sqlite3.Connection, pendente_id: int):
+    conn.execute(
+        "UPDATE _fiscal_pendente SET resolvido = 1, atualizado_em = datetime('now', 'localtime') WHERE id = ?",
+        (pendente_id,),
+    )
+    conn.commit()
+
+
+def reprocessar_pendente(conn: sqlite3.Connection, schema: Schema, pendente: dict) -> ResultadoEmissao:
+    """Tenta emitir de novo uma nota da fila de pendências. Marca como
+    resolvida se der certo dessa vez; senão, atualiza tentativas/erro e
+    mantém pendente. Nunca levanta ErroFiscal -- eventuais problemas
+    (tabela ou registro que não existem mais, validação) viram um
+    ResultadoEmissao com sucesso=False, pra não travar um reenvio em
+    lote de várias pendências."""
+    tabela = schema.tabela(pendente["tabela"])
+    if not tabela:
+        marcar_resolvido(conn, pendente["id"])
+        return ResultadoEmissao(
+            sucesso=False,
+            mensagem=f"Tabela '{pendente['tabela']}' não existe mais no schema -- pendência descartada.",
+        )
+
+    registro = db.obter(conn, tabela, pendente["registro_id"])
+    if not registro:
+        marcar_resolvido(conn, pendente["id"])
+        return ResultadoEmissao(
+            sucesso=False,
+            mensagem="O registro original foi excluído -- pendência descartada.",
+        )
+
+    try:
+        resultado = emitir(conn, schema, tabela, registro)
+    except ErroFiscal as e:
+        resultado = ResultadoEmissao(sucesso=False, mensagem=str(e))
+
+    if resultado.sucesso:
+        marcar_resolvido(conn, pendente["id"])
+    else:
+        enfileirar_pendente(conn, pendente["tabela"], pendente["registro_id"], resultado.mensagem)
+
+    return resultado

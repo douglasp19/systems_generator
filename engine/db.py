@@ -88,6 +88,22 @@ def _criar_tabela_sistema(conn: sqlite3.Connection):
             FOREIGN KEY (usuario_id) REFERENCES _usuarios(id)
         )
     """)
+    # Notas fiscais que falharam por problema de comunicação com o
+    # gateway (ex: sem internet no momento da venda) -- ficam aqui até
+    # serem reenviadas com sucesso (retry automático no login, ou manual
+    # na tela "Notas Pendentes").
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _fiscal_pendente (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tabela TEXT NOT NULL,
+            registro_id INTEGER NOT NULL,
+            tentativas INTEGER NOT NULL DEFAULT 1,
+            ultimo_erro TEXT,
+            criado_em TEXT DEFAULT (datetime('now', 'localtime')),
+            atualizado_em TEXT,
+            resolvido INTEGER NOT NULL DEFAULT 0
+        )
+    """)
     conn.commit()
 
 

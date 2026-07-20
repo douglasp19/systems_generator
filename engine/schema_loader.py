@@ -95,6 +95,9 @@ class ImpressaoConfig:
     titulo: str = ""
     campos: list[str] = field(default_factory=list)  # quais campos entram no cupom
     rodape: str = ""
+    # Se true, imprime o cupom sozinho assim que um registro NOVO é salvo
+    # (não reimprime ao editar) -- sem precisar clicar no botão de impressora.
+    auto_imprimir: bool = False
 
 
 @dataclass

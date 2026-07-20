@@ -367,16 +367,25 @@ class SistemaApp:
 
     def _tabela_rolavel(self, tabela_dados: ft.DataTable) -> ft.Container:
         """Envolve um DataTable com rolagem vertical, para a lista de
-        registros não estourar a altura disponível da tela.
+        registros não estourar a altura disponível da tela. Também torna
+        todo o texto da tabela selecionável/copiável via SelectionArea.
 
         Nota: tentar somar rolagem horizontal aqui (Row com scroll dentro
         do Column com scroll) quebra o layout nesta versão do Flet -- a
         janela inteira passa a "vazar" para a largura do conteúdo. Por
         isso as colunas usam largura moderada (_largura_texto/_largura_campo)
         e o usuário pode ocultar colunas (botão "Colunas") em vez de
-        depender de rolagem nos dois eixos."""
+        depender de rolagem nos dois eixos.
+
+        Nota 2: usar `ft.Text(selectable=True)` campo a campo (em vez de
+        um único SelectionArea envolvendo tudo) causa um bug visual nesta
+        versão do Flet -- células aparecem "selecionadas" sozinhas, sem
+        nenhum clique. SelectionArea usa um único controlador de seleção
+        pra toda a subárvore e não tem esse problema."""
         return ft.Container(
-            content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO),
+            content=ft.SelectionArea(
+                content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO)
+            ),
             expand=True,
         )
 
@@ -576,6 +585,9 @@ class SistemaApp:
         dialogo = ft.AlertDialog(
             modal=True,
             title=ft.Text(titulo, color=cor_titulo, weight=ft.FontWeight.BOLD),
+            # Nota: SelectionArea aqui reintroduz o bug de seleção espontânea
+            # (provavelmente por causa da animação de abertura do
+            # AlertDialog) -- funciona bem na lista, mas não em diálogos.
             content=ft.Container(content=ft.Column(conteudo, tight=True), width=420),
             actions=[ft.TextButton("Fechar", on_click=lambda e: self.page.pop_dialog())],
         )

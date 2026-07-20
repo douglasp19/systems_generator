@@ -415,6 +415,17 @@ usam todos os campos, independente do que está oculto só na tela.
 > isso o filtro de colunas e o ajuste de largura são o jeito recomendado
 > de lidar com tabelas muito largas, em vez de rolar a tela pros lados.
 
+**Texto selecionável** -- os valores mostrados nas telas de lista (Produtos,
+Auditoria, Usuários, Notas Pendentes) podem ser destacados com o mouse e
+copiados, pra colar um telefone, e-mail ou protocolo em outro lugar sem
+precisar abrir o formulário de edição.
+
+> Não aparece no diálogo de resultado da emissão fiscal -- nessa versão
+> do Flet, texto selecionável dentro de um `AlertDialog` reintroduz um
+> bug de seleção espontânea (provavelmente ligado à animação de abertura
+> do diálogo). Como a lista (que não tem essa animação) funciona bem,
+> deixamos selecionável só ali.
+
 ## Próximos passos sugeridos
 
 Todos os itens da lista original (editor visual, validações, alertas de

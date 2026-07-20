@@ -172,6 +172,22 @@ def registro_para_exibicao(conn: sqlite3.Connection, tabela: Tabela, registro: d
     return resultado
 
 
+def listar_abaixo_do_minimo(conn: sqlite3.Connection, tabela: Tabela) -> list[dict]:
+    """Retorna os registros cujo campo de quantidade está abaixo do campo
+    de estoque mínimo, conforme configurado em 'alerta_estoque' no YAML.
+    Usado para exibir o aviso de estoque baixo na tela de lista."""
+    if not tabela.alerta_estoque.ativo:
+        return []
+    campo_qtd = tabela.alerta_estoque.campo_quantidade
+    campo_min = tabela.alerta_estoque.campo_minimo
+    sql = (
+        f'SELECT * FROM "{tabela.nome}" '
+        f'WHERE "{campo_qtd}" < "{campo_min}" ORDER BY "{campo_qtd}" ASC'
+    )
+    cur = conn.execute(sql)
+    return [dict(row) for row in cur.fetchall()]
+
+
 def listar_vinculados(conn: sqlite3.Connection, tabela_filha: Tabela,
                        campo_fk_nome: str, valor_pai) -> list[dict]:
     """Busca todos os registros da 'tabela_filha' que apontam para um

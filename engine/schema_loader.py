@@ -125,6 +125,19 @@ class FiscalConfig:
     campo_descricao: Optional[str] = None   # campo usado como descrição do item/serviço
 
 
+@dataclass
+class AlertaEstoqueConfig:
+    """Aviso na tela de lista quando a quantidade em estoque de um
+    registro fica abaixo do mínimo configurado (ex: produtos).
+
+    'campo_quantidade' e 'campo_minimo' são os nomes dos campos
+    (inteiro/decimal) da própria tabela que guardam, respectivamente, a
+    quantidade atual e o estoque mínimo desejado."""
+    ativo: bool = False
+    campo_quantidade: Optional[str] = None
+    campo_minimo: Optional[str] = None
+
+
 def encontrar_campo_fk_para(tabela_filha: "Tabela", nome_tabela_pai: str) -> Optional[Campo]:
     """Dado uma tabela de itens (filha) e o nome da tabela pai (ex: 'vendas'),
     encontra automaticamente qual campo dela é a referência de volta pro pai.
@@ -145,6 +158,7 @@ class Tabela:
     abas: list[Aba] = field(default_factory=list)
     impressao: ImpressaoConfig = field(default_factory=ImpressaoConfig)
     fiscal: FiscalConfig = field(default_factory=FiscalConfig)
+    alerta_estoque: AlertaEstoqueConfig = field(default_factory=AlertaEstoqueConfig)
 
     def campo(self, nome: str) -> Optional[Campo]:
         for c in self.campos:
@@ -218,6 +232,9 @@ def carregar_schema(caminho_yaml: str) -> Schema:
         fiscal_bruto = t.get("fiscal", {})
         fiscal_tabela = FiscalConfig(**fiscal_bruto) if fiscal_bruto else FiscalConfig()
 
+        alerta_estoque_bruto = t.get("alerta_estoque", {})
+        alerta_estoque = AlertaEstoqueConfig(**alerta_estoque_bruto) if alerta_estoque_bruto else AlertaEstoqueConfig()
+
         tabelas.append(
             Tabela(
                 nome=t["nome"],
@@ -227,6 +244,7 @@ def carregar_schema(caminho_yaml: str) -> Schema:
                 abas=abas,
                 impressao=impressao,
                 fiscal=fiscal_tabela,
+                alerta_estoque=alerta_estoque,
             )
         )
 

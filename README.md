@@ -45,7 +45,12 @@ sistema_generator/
 
 ## Criando um sistema novo para um cliente
 
-1. Copie `schema_exemplo.yaml` para `schema_clientex.yaml`
+1. Escolha um ponto de partida e copie para `schema_clientex.yaml`:
+   - `schema_estoque.yaml` — só estoque (produtos, fornecedores, movimentações)
+   - `schema_clientes.yaml` — cadastro de clientes + histórico de interações (CRM simples)
+   - `schema_os.yaml` — ordens de serviço (clientes, equipamentos, status, valor)
+   - `schema_exemplo.yaml` — estoque + vendas + NF-e (distribuidor B2B)
+   - `schema_loja_eletronicos.yaml` — estoque + vendas + NFC-e (venda de balcão)
 2. Edite o nome do sistema e o caminho do banco:
    ```yaml
    sistema:
@@ -313,13 +318,25 @@ Além de `obrigatorio`, campos numéricos (`inteiro`/`decimal`) aceitam
 A validação roda ao salvar o formulário, antes de gravar no banco; se
 falhar, a mensagem de erro aparece no próprio formulário.
 
+## Alerta de estoque mínimo
+
+Para qualquer tabela com um campo de quantidade e um de estoque mínimo,
+ative o aviso automático na tela de lista:
+
+```yaml
+alerta_estoque:
+  ativo: true
+  campo_quantidade: quantidade
+  campo_minimo: estoque_minimo
+```
+
+Com isso, sempre que algum registro tiver `quantidade < estoque_minimo`:
+a tela de lista mostra um banner no topo listando os itens afetados
+(com a quantidade atual e o mínimo configurado), e a célula de
+quantidade daquele registro fica destacada em vermelho na tabela.
+
 ## Próximos passos sugeridos
 
-- **Alertas de estoque mínimo**: notificação na tela quando `quantidade <
-  estoque_minimo` (fácil de adicionar já que o campo existe no exemplo).
-- **Templates prontos**: `schema_estoque.yaml`, `schema_clientes.yaml`,
-  `schema_os.yaml` como pontos de partida para os padrões mais comuns
-  que você já entrega hoje.
 - **Impressão automática após salvar**: hoje o cupom é impresso com um
   clique manual; dá pra imprimir automaticamente assim que uma venda é
   salva, se o cliente preferir.

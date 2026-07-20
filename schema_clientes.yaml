@@ -1,0 +1,103 @@
+# =========================================================================
+# TEMPLATE: Cadastro de Clientes / CRM simples
+#
+# Ponto de partida para um cliente que só precisa de uma base de
+# contatos com histórico de interações (ligações, e-mails, reuniões) --
+# sem estoque, sem vendas, sem nota fiscal. Copie este arquivo, renomeie
+# e ajuste conforme o cliente.
+# =========================================================================
+
+sistema:
+  nome: "Cadastro de Clientes"
+  banco: "data/clientes.db"
+
+tabelas:
+
+  - nome: clientes
+    label: "Clientes"
+    icone: "person"
+    campos:
+      - nome: nome
+        label: "Nome / Razão social"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: cnpj_cpf
+        label: "CNPJ ou CPF"
+        tipo: texto
+        buscavel: true
+
+      - nome: telefone
+        label: "Telefone"
+        tipo: texto
+        buscavel: true
+
+      - nome: email
+        label: "E-mail"
+        tipo: texto
+
+      - nome: endereco
+        label: "Endereço"
+        tipo: texto
+
+      - nome: cidade
+        label: "Cidade"
+        tipo: texto
+
+      - nome: uf
+        label: "UF"
+        tipo: texto
+
+      - nome: data_cadastro
+        label: "Data de cadastro"
+        tipo: data
+
+      - nome: ativo
+        label: "Ativo"
+        tipo: booleano
+        default: true
+
+      - nome: observacoes
+        label: "Observações"
+        tipo: texto_longo
+
+    abas:
+      - nome: "Dados gerais"
+        campos: [nome, cnpj_cpf, telefone, email, ativo]
+      - nome: "Endereço"
+        campos: [endereco, cidade, uf]
+      - nome: "Outros"
+        campos: [data_cadastro, observacoes]
+
+  # Histórico de contatos com o cliente -- cada linha é uma interação
+  # registrada (ligação, e-mail, reunião, visita...). Ajuda a acompanhar
+  # o relacionamento sem depender de planilha ou memória.
+  - nome: interacoes
+    label: "Interações"
+    icone: "forum"
+    campos:
+      - nome: cliente_id
+        label: "Cliente"
+        tipo: referencia
+        tabela_ref: clientes
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: tipo
+        label: "Tipo (ligação/e-mail/reunião/visita)"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: data
+        label: "Data"
+        tipo: data
+
+      - nome: responsavel
+        label: "Responsável"
+        tipo: texto
+
+      - nome: descricao
+        label: "Descrição"
+        tipo: texto_longo

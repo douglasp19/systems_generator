@@ -1,0 +1,132 @@
+# =========================================================================
+# TEMPLATE: Controle de Estoque simples
+#
+# Ponto de partida para um cliente que só precisa controlar produtos,
+# fornecedores e as entradas/saídas do estoque -- sem vendas, sem nota
+# fiscal. Copie este arquivo, renomeie e ajuste conforme o cliente.
+# =========================================================================
+
+sistema:
+  nome: "Controle de Estoque"
+  banco: "data/estoque.db"
+
+tabelas:
+
+  - nome: produtos
+    label: "Produtos"
+    icone: "inventory_2"
+    campos:
+      - nome: nome
+        label: "Nome do produto"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: categoria
+        label: "Categoria"
+        tipo: texto
+        buscavel: true
+
+      - nome: quantidade
+        label: "Quantidade em estoque"
+        tipo: inteiro
+        obrigatorio: true
+        default: 0
+        minimo: 0
+
+      - nome: estoque_minimo
+        label: "Estoque mínimo"
+        tipo: inteiro
+        default: 5
+        minimo: 0
+
+      - nome: preco_custo
+        label: "Preço de custo (R$)"
+        tipo: decimal
+        default: 0.0
+        minimo: 0
+
+      - nome: preco_venda
+        label: "Preço de venda (R$)"
+        tipo: decimal
+        default: 0.0
+        minimo: 0
+
+      - nome: ativo
+        label: "Ativo"
+        tipo: booleano
+        default: true
+
+      - nome: observacoes
+        label: "Observações"
+        tipo: texto_longo
+
+    abas:
+      - nome: "Dados gerais"
+        campos: [nome, categoria, ativo]
+      - nome: "Preços e estoque"
+        campos: [quantidade, estoque_minimo, preco_custo, preco_venda]
+      - nome: "Outros"
+        campos: [observacoes]
+
+    # Avisa na tela quando "quantidade" fica abaixo de "estoque_minimo"
+    alerta_estoque:
+      ativo: true
+      campo_quantidade: quantidade
+      campo_minimo: estoque_minimo
+
+  - nome: fornecedores
+    label: "Fornecedores"
+    icone: "local_shipping"
+    campos:
+      - nome: nome
+        label: "Nome/Razão social"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: telefone
+        label: "Telefone"
+        tipo: texto
+
+      - nome: email
+        label: "E-mail"
+        tipo: texto
+
+      - nome: data_cadastro
+        label: "Data de cadastro"
+        tipo: data
+
+  # Histórico de entradas e saídas do estoque -- cada linha é um
+  # lançamento manual (compra recebida, ajuste de inventário, quebra,
+  # devolução...). A quantidade do produto em si é editada direto na
+  # tela de Produtos; esta tabela serve como registro/auditoria do motivo.
+  - nome: movimentacoes_estoque
+    label: "Movimentações de Estoque"
+    icone: "swap_vert"
+    campos:
+      - nome: produto_id
+        label: "Produto"
+        tipo: referencia
+        tabela_ref: produtos
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: tipo
+        label: "Tipo (entrada/saida)"
+        tipo: texto
+        obrigatorio: true
+
+      - nome: quantidade
+        label: "Quantidade movimentada"
+        tipo: inteiro
+        obrigatorio: true
+        minimo: 1
+
+      - nome: data
+        label: "Data"
+        tipo: data
+
+      - nome: observacoes
+        label: "Motivo/observações"
+        tipo: texto_longo

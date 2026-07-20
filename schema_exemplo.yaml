@@ -101,6 +101,13 @@ tabelas:
       - nome: "Outros"
         campos: [observacoes]
 
+    # Aviso na tela de lista quando "quantidade" fica abaixo de
+    # "estoque_minimo" -- destaca a linha e mostra um banner no topo.
+    alerta_estoque:
+      ativo: true
+      campo_quantidade: quantidade
+      campo_minimo: estoque_minimo
+
   - nome: fornecedores
     label: "Fornecedores"
     icone: "local_shipping"

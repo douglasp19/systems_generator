@@ -32,6 +32,11 @@ tabelas:
     obrigatorio: true
     default: 0
     minimo: 0
+  - nome: estoque_minimo
+    label: Estoque mínimo
+    tipo: inteiro
+    default: 5
+    minimo: 0
   - nome: preco_venda
     label: Preço de venda (R$)
     tipo: decimal
@@ -41,6 +46,10 @@ tabelas:
     label: NCM
     tipo: texto
   abas: []
+  alerta_estoque:
+    ativo: true
+    campo_quantidade: quantidade
+    campo_minimo: estoque_minimo
 - nome: clientes
   label: Clientes (CPF na nota)
   icone: person

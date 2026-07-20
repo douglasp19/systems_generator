@@ -153,10 +153,12 @@ class SistemaApp:
             label="Buscar", prefix_icon=ft.Icons.SEARCH, width=300, dense=True
         )
         tabela_dados = ft.DataTable(columns=self._colunas_datatable(tabela), rows=[])
+        banner_estoque = ft.Container(visible=False)
 
         def recarregar(e=None):
             registros = db.listar(self.conn, tabela, busca=campo_busca.value or "")
             tabela_dados.rows = [self._linha_datatable(tabela, r) for r in registros]
+            self._atualizar_banner_estoque(tabela, banner_estoque)
             self.page.update()
 
         campo_busca.on_change = recarregar
@@ -190,6 +192,7 @@ class SistemaApp:
         self.area_conteudo.content = ft.Column(
             [
                 ft.Text(tabela.label, size=20, weight=ft.FontWeight.BOLD),
+                banner_estoque,
                 barra_acoes,
                 ft.Container(content=ft.Column([tabela_dados], scroll=ft.ScrollMode.AUTO), expand=True),
             ],
@@ -200,6 +203,38 @@ class SistemaApp:
         self._recarregar_atual = recarregar
         recarregar()
         self.page.update()
+
+    def _atualizar_banner_estoque(self, tabela: Tabela, banner: ft.Container):
+        if not tabela.alerta_estoque.ativo:
+            banner.visible = False
+            return
+
+        abaixo_do_minimo = db.listar_abaixo_do_minimo(self.conn, tabela)
+        if not abaixo_do_minimo:
+            banner.visible = False
+            return
+
+        campo_qtd = tabela.alerta_estoque.campo_quantidade
+        campo_min = tabela.alerta_estoque.campo_minimo
+        # usa o primeiro campo buscável (normalmente "nome") como rótulo do item
+        campos_buscaveis = tabela.campos_buscaveis
+        campo_rotulo = campos_buscaveis[0].nome if campos_buscaveis else tabela.campos[0].nome
+
+        itens = ", ".join(
+            f"{r.get(campo_rotulo, '#' + str(r['id']))} ({r.get(campo_qtd)}/{r.get(campo_min)})"
+            for r in abaixo_do_minimo
+        )
+
+        banner.visible = True
+        banner.content = ft.Row(
+            [
+                ft.Icon(ft.Icons.WARNING_AMBER_ROUNDED, color=ft.Colors.ORANGE_800),
+                ft.Text(f"Estoque baixo: {itens}", color=ft.Colors.ORANGE_800, size=13, expand=True),
+            ]
+        )
+        banner.bgcolor = ft.Colors.ORANGE_50
+        banner.padding = 10
+        banner.border_radius = 6
 
     def _colunas_datatable(self, tabela: Tabela) -> list[ft.DataColumn]:
         colunas = [ft.DataColumn(ft.Text("ID"))]
@@ -213,10 +248,23 @@ class SistemaApp:
         # para exibir o rótulo em vez do número do id.
         registro_exibicao = db.registro_para_exibicao(self.conn, tabela, registro)
 
+        valor_qtd = registro.get(tabela.alerta_estoque.campo_quantidade) if tabela.alerta_estoque.ativo else None
+        valor_min = registro.get(tabela.alerta_estoque.campo_minimo) if tabela.alerta_estoque.ativo else None
+        abaixo_do_minimo = valor_qtd is not None and valor_min is not None and valor_qtd < valor_min
+
         celulas = [ft.DataCell(ft.Text(str(registro["id"])))]
         for c in tabela.campos:
             valor = registro_exibicao.get(c.nome)
-            celulas.append(ft.DataCell(ft.Text(self._formatar_valor(c, valor))))
+            destaque = abaixo_do_minimo and c.nome == tabela.alerta_estoque.campo_quantidade
+            celulas.append(
+                ft.DataCell(
+                    ft.Text(
+                        self._formatar_valor(c, valor),
+                        color=ft.Colors.RED if destaque else None,
+                        weight=ft.FontWeight.BOLD if destaque else None,
+                    )
+                )
+            )
 
         botoes_acao = [
             ft.IconButton(

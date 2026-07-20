@@ -1,0 +1,140 @@
+# =========================================================================
+# TEMPLATE: Ordens de Serviço (assistência técnica, oficina, manutenção)
+#
+# Ponto de partida para um cliente que presta serviço sobre um
+# equipamento do cliente final: recebe o equipamento, abre uma ordem de
+# serviço, acompanha o status e fecha com um valor cobrado. Copie este
+# arquivo, renomeie e ajuste conforme o ramo do cliente.
+# =========================================================================
+
+sistema:
+  nome: "Ordens de Serviço"
+  banco: "data/ordens_servico.db"
+
+  # Cupom de retirada/comprovante da OS -- desativado por padrão, ative
+  # e configure a impressora se o cliente tiver uma térmica.
+  impressora:
+    ativo: false
+    conexao: arquivo
+    colunas: 42
+
+tabelas:
+
+  - nome: clientes
+    label: "Clientes"
+    icone: "person"
+    campos:
+      - nome: nome
+        label: "Nome / Razão social"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: telefone
+        label: "Telefone"
+        tipo: texto
+        buscavel: true
+
+      - nome: email
+        label: "E-mail"
+        tipo: texto
+
+      - nome: endereco
+        label: "Endereço"
+        tipo: texto
+
+  - nome: equipamentos
+    label: "Equipamentos"
+    icone: "build"
+    campos:
+      - nome: cliente_id
+        label: "Cliente"
+        tipo: referencia
+        tabela_ref: clientes
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: descricao
+        label: "Descrição do equipamento"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: marca
+        label: "Marca"
+        tipo: texto
+
+      - nome: modelo
+        label: "Modelo"
+        tipo: texto
+
+      - nome: numero_serie
+        label: "Número de série"
+        tipo: texto
+        buscavel: true
+
+  - nome: ordens_servico
+    label: "Ordens de Serviço"
+    icone: "assignment"
+    campos:
+      - nome: cliente_id
+        label: "Cliente"
+        tipo: referencia
+        tabela_ref: clientes
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: equipamento_id
+        label: "Equipamento"
+        tipo: referencia
+        tabela_ref: equipamentos
+        campo_exibicao: descricao
+        obrigatorio: true
+
+      - nome: descricao_problema
+        label: "Descrição do problema"
+        tipo: texto_longo
+        obrigatorio: true
+
+      - nome: status
+        label: "Status (aberta/em_andamento/concluida)"
+        tipo: texto
+        default: "aberta"
+        buscavel: true
+
+      - nome: tecnico_responsavel
+        label: "Técnico responsável"
+        tipo: texto
+
+      - nome: data_abertura
+        label: "Data de abertura"
+        tipo: data
+
+      - nome: data_conclusao
+        label: "Data de conclusão"
+        tipo: data
+
+      - nome: valor_servico
+        label: "Valor do serviço (R$)"
+        tipo: decimal
+        default: 0.0
+        minimo: 0
+
+      - nome: observacoes
+        label: "Observações"
+        tipo: texto_longo
+
+    abas:
+      - nome: "Ordem"
+        campos: [cliente_id, equipamento_id, descricao_problema, status]
+      - nome: "Execução"
+        campos: [tecnico_responsavel, data_abertura, data_conclusao, valor_servico]
+      - nome: "Outros"
+        campos: [observacoes]
+
+    # Comprovante de retirada/entrega -- ative junto com sistema.impressora
+    impressao:
+      ativo: false
+      titulo: "Ordem de Serviço"
+      campos: [cliente_id, equipamento_id, status, valor_servico]
+      rodape: "Guarde este comprovante para retirada do equipamento."

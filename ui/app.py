@@ -306,9 +306,9 @@ class SistemaApp:
             modal=True,
             title=ft.Text(titulo, color=cor_titulo, weight=ft.FontWeight.BOLD),
             content=ft.Container(content=ft.Column(conteudo, tight=True), width=420),
-            actions=[ft.TextButton("Fechar", on_click=lambda e: self.page.close(dialogo))],
+            actions=[ft.TextButton("Fechar", on_click=lambda e: self.page.pop_dialog())],
         )
-        self.page.open(dialogo)
+        self.page.show_dialog(dialogo)
 
     # ------------------------------------------------------------------
     # FORMULÁRIO GENÉRICO (criar/editar) - gerado a partir dos campos
@@ -351,7 +351,7 @@ class SistemaApp:
                 audit.registrar(self.conn, tabela.nome, novo_id, "criar",
                                  self.usuario_logado["usuario"])
 
-            self.page.close(dialogo)
+            self.page.pop_dialog()
             recarregar()
             self._notificar("Salvo com sucesso.")
 
@@ -408,11 +408,11 @@ class SistemaApp:
             title=ft.Text(("Editar " if editando else "Novo ") + (tabela.label[:-1] if tabela.label.endswith("s") else tabela.label)),
             content=ft.Container(content=conteudo_formulario, width=440, height=altura_conteudo),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self.page.close(dialogo)),
+                ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),
                 ft.ElevatedButton("Salvar", on_click=salvar),
             ],
         )
-        self.page.open(dialogo)
+        self.page.show_dialog(dialogo)
 
     def _criar_input(self, campo: Campo, valor_atual) -> ft.Control:
         if campo.tipo == "referencia":
@@ -462,7 +462,7 @@ class SistemaApp:
             db.excluir(self.conn, tabela, registro["id"])
             audit.registrar(self.conn, tabela.nome, registro["id"], "excluir",
                              self.usuario_logado["usuario"])
-            self.page.close(dialogo)
+            self.page.pop_dialog()
             self._recarregar_atual()
             self._notificar("Registro excluído.")
 
@@ -471,12 +471,12 @@ class SistemaApp:
             title=ft.Text("Confirmar exclusão"),
             content=ft.Text(f"Tem certeza que deseja excluir o registro #{registro['id']}?"),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self.page.close(dialogo)),
+                ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),
                 ft.ElevatedButton("Excluir", icon=ft.Icons.DELETE, on_click=excluir,
                                    color=ft.Colors.WHITE, bgcolor=ft.Colors.RED),
             ],
         )
-        self.page.open(dialogo)
+        self.page.show_dialog(dialogo)
 
     # ------------------------------------------------------------------
     # AUDITORIA
@@ -578,7 +578,7 @@ class SistemaApp:
         self.page.update()
 
     def _notificar(self, mensagem: str):
-        self.page.open(ft.SnackBar(ft.Text(mensagem)))
+        self.page.show_dialog(ft.SnackBar(ft.Text(mensagem)))
 
 
 def rodar_app(schema: Schema):

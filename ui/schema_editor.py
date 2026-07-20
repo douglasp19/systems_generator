@@ -272,7 +272,7 @@ class SchemaEditorApp:
                 self.tabela_selecionada_idx = None
             elif self.tabela_selecionada_idx is not None and self.tabela_selecionada_idx > idx:
                 self.tabela_selecionada_idx -= 1
-            self.page.close(dialogo)
+            self.page.pop_dialog()
             self._renderizar_lista_tabelas()
             self._renderizar_detalhe_tabela()
             self.page.update()
@@ -283,11 +283,11 @@ class SchemaEditorApp:
             title=ft.Text("Remover tabela"),
             content=ft.Text(f"Remover '{nome}'? Os campos configurados serão perdidos."),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self.page.close(dialogo)),
+                ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),
                 ft.ElevatedButton("Remover", color=ft.Colors.WHITE, bgcolor=ft.Colors.RED, on_click=confirmar),
             ],
         )
-        self.page.open(dialogo)
+        self.page.show_dialog(dialogo)
 
     # ------------------------------------------------------------------
     # DETALHE DA TABELA SELECIONADA (direita)
@@ -312,7 +312,7 @@ class SchemaEditorApp:
         campo_icone = ft.Dropdown(
             label="Ícone", value=tabela.get("icone", "table_rows"), width=220, dense=True,
             options=[ft.dropdown.Option(i) for i in ICONES_SUGERIDOS],
-            on_change=lambda e: tabela.__setitem__("icone", e.control.value),
+            on_select=lambda e: tabela.__setitem__("icone", e.control.value),
         )
 
         lista_campos = ft.Column(spacing=4)
@@ -476,7 +476,7 @@ class SchemaEditorApp:
         campo_tipo = ft.Dropdown(
             label="Tipo do campo", width=250, value=c.get("tipo", "texto"),
             options=[ft.dropdown.Option(key=v, text=lbl) for v, lbl in TIPOS_CAMPO],
-            on_change=atualizar_visibilidade,
+            on_select=atualizar_visibilidade,
         )
 
         mensagem_erro = ft.Text("", color=ft.Colors.RED, size=12)
@@ -529,7 +529,7 @@ class SchemaEditorApp:
             else:
                 tabela.setdefault("campos", []).append(novo)
 
-            self.page.close(dialogo)
+            self.page.pop_dialog()
             self._renderizar_detalhe_tabela()
             self.page.update()
 
@@ -553,14 +553,14 @@ class SchemaEditorApp:
                 width=440, height=420,
             ),
             actions=[
-                ft.TextButton("Cancelar", on_click=lambda e: self.page.close(dialogo)),
+                ft.TextButton("Cancelar", on_click=lambda e: self.page.pop_dialog()),
                 ft.ElevatedButton("Salvar", on_click=salvar),
             ],
         )
-        self.page.open(dialogo)
+        self.page.show_dialog(dialogo)
 
     def _notificar(self, mensagem: str):
-        self.page.open(ft.SnackBar(ft.Text(mensagem)))
+        self.page.show_dialog(ft.SnackBar(ft.Text(mensagem)))
 
 
 def rodar_editor(caminho_inicial: str | None = None):

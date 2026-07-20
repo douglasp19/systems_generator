@@ -1,0 +1,149 @@
+# =========================================================================
+# EXEMPLO: Loja de balcão (eletrônicos, mercado, farmácia...) -- NFC-e
+#
+# Diferença pro schema_exemplo.yaml (que usa NF-e/DANFE para distribuidor
+# vendendo pra outra empresa): aqui a venda é direto ao consumidor final
+# no balcão, então o documento é a NFC-e (modelo 65, gera o DANFCE) e o
+# cliente é OPCIONAL -- só é vinculado se a pessoa pedir CPF na nota.
+# =========================================================================
+
+sistema:
+  nome: "Loja de Eletrônicos - Exemplo"
+  banco: "data/loja_eletronicos.db"
+
+  impressora:
+    ativo: true
+    conexao: arquivo        # troque para "usb" ou "rede" numa impressora real
+    colunas: 42
+
+  fiscal:
+    ativo: true
+    provedor: "focus_nfe"
+    ambiente: "homologacao"
+    api_url: "https://homologacao.focusnfe.com.br/v2"
+    api_token_env: "FOCUS_NFE_TOKEN"
+    cnpj_emitente: "00.000.000/0001-00"
+
+tabelas:
+
+  - nome: produtos
+    label: "Produtos"
+    icone: "inventory_2"
+    campos:
+      - nome: nome
+        label: "Nome do produto"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: categoria
+        label: "Categoria"
+        tipo: texto
+        buscavel: true
+
+      - nome: quantidade
+        label: "Quantidade em estoque"
+        tipo: inteiro
+        obrigatorio: true
+        default: 0
+        minimo: 0
+
+      - nome: preco_venda
+        label: "Preço de venda (R$)"
+        tipo: decimal
+        obrigatorio: true
+        minimo: 0
+
+      - nome: ncm
+        label: "NCM"
+        tipo: texto
+        # Em eletrônicos o NCM muda por categoria de produto (celular,
+        # fone, cabo...). Peça a tabela completa ao contador da loja.
+
+  - nome: clientes
+    label: "Clientes (CPF na nota)"
+    icone: "person"
+    campos:
+      - nome: nome
+        label: "Nome"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: cnpj_cpf
+        label: "CPF"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+  - nome: vendas
+    label: "Vendas"
+    icone: "point_of_sale"
+    campos:
+      # Sem 'obrigatorio: true' -- a grande maioria das vendas de balcão
+      # não tem cliente identificado. Só preenche se a pessoa pedir CPF.
+      - nome: cliente_id
+        label: "Cliente (opcional -- CPF na nota)"
+        tipo: referencia
+        tabela_ref: clientes
+        campo_exibicao: nome
+        obrigatorio: false
+
+      - nome: forma_pagamento
+        label: "Forma de pagamento"
+        tipo: texto
+
+      - nome: valor_total
+        label: "Valor total (R$)"
+        tipo: decimal
+        default: 0.0
+
+    impressao:
+      ativo: true
+      titulo: "Cupom de Venda"
+      campos: [forma_pagamento, valor_total]
+      rodape: "Volte sempre!"
+
+    # NFC-e: destinatário opcional, mas ainda precisa da lista de itens.
+    fiscal:
+      ativo: true
+      tipo: nfce
+      campo_destinatario: cliente_id   # opcional -- fica None se a venda não tiver cliente
+      tabela_itens: itens_venda
+
+  - nome: itens_venda
+    label: "Itens de Venda"
+    icone: "list_alt"
+    campos:
+      - nome: venda_id
+        label: "Venda"
+        tipo: referencia
+        tabela_ref: vendas
+        campo_exibicao: forma_pagamento
+        obrigatorio: true
+
+      - nome: produto_id
+        label: "Produto"
+        tipo: referencia
+        tabela_ref: produtos
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: quantidade
+        label: "Quantidade"
+        tipo: inteiro
+        obrigatorio: true
+        default: 1
+        minimo: 1
+
+      - nome: valor_unitario
+        label: "Valor unitário (R$)"
+        tipo: decimal
+        obrigatorio: true
+        minimo: 0
+
+      - nome: valor_total
+        label: "Valor total do item (R$)"
+        tipo: decimal
+        obrigatorio: true
+        minimo: 0

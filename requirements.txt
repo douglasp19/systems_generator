@@ -1,0 +1,11 @@
+flet==0.86.1
+flet-web==0.86.1
+openpyxl>=3.1.0
+PyYAML>=6.0
+python-escpos>=3.1          # impressão em impressora térmica (ESC/POS)
+requests>=2.31               # emissão de nota fiscal via gateway (Focus NFe, PlugNotas etc.)
+
+# IMPORTANTE: o Flet muda a API de tempo em tempo (ex: Tabs, alignment,
+# padding mudaram na 0.86). Este projeto foi testado especificamente
+# com flet==0.86.1. Se atualizar a versão, rode os testes antes de
+# colocar em producao num cliente.

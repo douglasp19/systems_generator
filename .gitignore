@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Dados gerados por cliente (bancos SQLite, exports, backups, cupons de teste)
+data/
+exports/
+backups/
+cupons_teste/
+*.db
+
+# Segredos (tokens de gateway fiscal etc. -- NUNCA versionar)
+.env
+
+# Build (pyinstaller / flet pack)
+build/
+dist/
+*.spec
+
+# Editor/IDE
+.vscode/
+.idea/

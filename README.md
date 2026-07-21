@@ -38,6 +38,7 @@ sistema_generator/
 │   └── backup.py             # backup do banco
 ├── ui/
 │   └── app.py                # interface Flet, gerada a partir do schema
+├── modulos/                  # blocos de tabelas prontos (importáveis pelo editor visual)
 ├── data/                     # onde fica o arquivo .db do cliente
 ├── exports/                  # arquivos exportados
 └── backups/                  # backups automáticos
@@ -377,6 +378,49 @@ mínimo/máximo, largura de coluna, referência a outra tabela) e configurar
 abas do formulário. O botão "Salvar" grava o `.yaml` no caminho informado,
 e "Rodar sistema" abre o sistema gerado numa janela separada para testar
 na hora.
+
+### Módulos prontos (blocos de tabelas reutilizáveis)
+
+O botão de "importar módulo" (ícone ao lado de "Nova tabela", na coluna
+de Tabelas) junta num clique um bloco pronto de tabelas -- em vez de
+montar campo por campo toda vez que aparece um cliente parecido com um
+que você já atendeu. Vem com quatro módulos de fábrica, pensados pra
+profissionais que atendem pessoas por consulta/sessão (nutricionista,
+médico, dentista, psicólogo, esteticista, personal trainer...):
+
+- **Pacientes/Clientes** — cadastro genérico (nome, CPF, contato,
+  endereço, nascimento). Os outros três esperam uma tabela chamada
+  exatamente `pacientes` -- importe este primeiro.
+- **Anamnese / Histórico clínico** — ficha vinculada ao paciente
+  (queixa, histórico, observações).
+- **Agendamento / Consultas** — data, horário, paciente e status.
+- **Financeiro simples (cobranças)** — valor cobrado, forma de
+  pagamento, status (pago/pendente).
+
+Cada módulo é só um arquivo `.yaml` na pasta `modulos/`, com o mesmo
+formato de uma tabela normal (é literalmente um YAML de exemplo, só que
+com metadados extra no topo):
+
+```yaml
+modulo:
+  nome: "Nome mostrado no diálogo"
+  descricao: "Uma frase explicando o que o módulo resolve."
+  depende_de: [pacientes]   # nomes de tabela que precisam já existir
+
+tabelas:
+  - nome: minha_tabela
+    label: "..."
+    campos: [...]
+```
+
+Pra criar módulos novos (ex: um específico pra estética, ou pra
+petshop), copie um arquivo existente e ajuste. O diálogo de importação
+lê a pasta inteira sozinho -- não precisa registrar o módulo em nenhum
+outro lugar. Importar não duplica tabela (se já existir uma com o mesmo
+nome, é ignorada e avisada), e avisa quando falta a tabela da qual o
+módulo depende -- mas não impede a importação, já que a ordem das
+tabelas no YAML não importa pro SQLite (só importa que a tabela
+referenciada *exista*, com esse nome, quando o sistema abrir).
 
 Cada tabela também tem, na mesma tela, as seções de **alerta de estoque
 mínimo** (liga/desliga e escolhe os campos de quantidade/mínimo por

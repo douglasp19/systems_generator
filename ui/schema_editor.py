@@ -30,6 +30,37 @@ ICONES_SUGERIDOS = [
     "list_alt", "build", "medical_services", "restaurant", "receipt_long",
 ]
 
+# Pasta com os módulos prontos (blocos de tabelas reutilizáveis, ex:
+# "Pacientes", "Anamnese") -- fica na raiz do projeto, ao lado de main.py.
+MODULOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modulos")
+
+
+def _listar_modulos() -> list[dict]:
+    """Lê todo .yaml da pasta modulos/ e retorna os metadados + tabelas
+    de cada um. Módulos com erro de leitura são ignorados silenciosamente
+    (não travam o editor por causa de um arquivo malformado)."""
+    modulos = []
+    if not os.path.isdir(MODULOS_DIR):
+        return modulos
+    for nome_arquivo in sorted(os.listdir(MODULOS_DIR)):
+        if not nome_arquivo.endswith((".yaml", ".yml")):
+            continue
+        caminho = os.path.join(MODULOS_DIR, nome_arquivo)
+        try:
+            with open(caminho, "r", encoding="utf-8") as f:
+                bruto = yaml.safe_load(f) or {}
+        except (yaml.YAMLError, OSError):
+            continue
+        meta = bruto.get("modulo", {})
+        modulos.append({
+            "arquivo": nome_arquivo,
+            "nome": meta.get("nome", nome_arquivo),
+            "descricao": meta.get("descricao", ""),
+            "depende_de": meta.get("depende_de", []) or [],
+            "tabelas": bruto.get("tabelas", []) or [],
+        })
+    return modulos
+
 
 def _cast_default(tipo: str, texto: str):
     if texto is None or texto == "":
@@ -176,6 +207,8 @@ class SchemaEditorApp:
                         [
                             ft.Text("Tabelas", weight=ft.FontWeight.BOLD),
                             ft.Container(expand=True),
+                            ft.IconButton(ft.Icons.LIBRARY_ADD, icon_color=ft.Colors.INDIGO,
+                                          tooltip="Importar módulo pronto", on_click=self._abrir_dialogo_modulos),
                             ft.IconButton(ft.Icons.ADD_CIRCLE, icon_color=ft.Colors.INDIGO,
                                           tooltip="Nova tabela", on_click=self._nova_tabela),
                         ]
@@ -252,6 +285,87 @@ class SchemaEditorApp:
         self._renderizar_lista_tabelas()
         self._renderizar_detalhe_tabela()
         self.page.update()
+
+    # ------------------------------------------------------------------
+    # MÓDULOS PRONTOS (blocos de tabelas reutilizáveis)
+    # ------------------------------------------------------------------
+    def _abrir_dialogo_modulos(self, e=None):
+        modulos = _listar_modulos()
+        if not modulos:
+            self._notificar(f"Nenhum módulo encontrado em '{MODULOS_DIR}'.")
+            return
+
+        def importar(modulo: dict, e=None):
+            nomes_atuais = {t.get("nome") for t in self.bruto.get("tabelas", [])}
+            adicionadas, ignoradas = [], []
+            for tabela_mod in modulo["tabelas"]:
+                nome = tabela_mod.get("nome")
+                if nome in nomes_atuais:
+                    ignoradas.append(nome)
+                    continue
+                self.bruto.setdefault("tabelas", []).append(dict(tabela_mod))
+                nomes_atuais.add(nome)
+                adicionadas.append(nome)
+
+            faltando = [dep for dep in modulo.get("depende_de", []) if dep not in nomes_atuais]
+
+            self.page.pop_dialog()
+            self._renderizar_lista_tabelas()
+            self._renderizar_detalhe_tabela()
+            self.page.update()
+
+            partes = [f"Módulo '{modulo['nome']}' importado."]
+            if adicionadas:
+                partes.append(f"Tabelas adicionadas: {', '.join(adicionadas)}.")
+            if ignoradas:
+                partes.append(f"Já existiam (não duplicadas): {', '.join(ignoradas)}.")
+            if faltando:
+                partes.append(
+                    f"Atenção: este módulo espera uma tabela chamada '{', '.join(faltando)}' "
+                    f"-- confira as referências antes de rodar o sistema."
+                )
+            self._notificar(" ".join(partes))
+
+        linhas_modulos = []
+        for modulo in modulos:
+            rotulos_tabelas = ", ".join(
+                t.get("label", t.get("nome", "")) for t in modulo["tabelas"]
+            )
+            linhas_modulos.append(
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Text(modulo["nome"], weight=ft.FontWeight.BOLD),
+                            ft.Text(modulo["descricao"], size=11, color=ft.Colors.GREY_600),
+                            ft.Text(f"Tabelas: {rotulos_tabelas}", size=11),
+                            (
+                                ft.Text(
+                                    f"Depende de: {', '.join(modulo['depende_de'])}",
+                                    size=11, color=ft.Colors.ORANGE_800,
+                                )
+                                if modulo["depende_de"] else ft.Container(height=0)
+                            ),
+                            ft.ElevatedButton(
+                                "Importar", icon=ft.Icons.ADD,
+                                on_click=lambda e, m=modulo: importar(m),
+                            ),
+                        ],
+                        spacing=4,
+                    ),
+                    padding=10, border_radius=6, bgcolor=ft.Colors.GREY_100,
+                )
+            )
+
+        dialogo = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("Importar módulo pronto"),
+            content=ft.Container(
+                content=ft.Column(linhas_modulos, spacing=8, scroll=ft.ScrollMode.AUTO),
+                width=420, height=460,
+            ),
+            actions=[ft.TextButton("Fechar", on_click=lambda e: self.page.pop_dialog())],
+        )
+        self.page.show_dialog(dialogo)
 
     def _mover_tabela(self, idx: int, direcao: int):
         tabelas = self.bruto["tabelas"]

@@ -1,0 +1,53 @@
+# =========================================================================
+# MÓDULO: Financeiro simples (cobranças/pagamentos)
+#
+# Registro de valores cobrados por atendimento: forma de pagamento e
+# status. Usa uma descrição livre (ex: "Consulta 12/03") em vez de
+# referenciar a tabela de Agendamento, pra não depender de dois módulos
+# ao mesmo tempo -- se você importou também o módulo de Agendamento e
+# quiser ligar as cobranças a uma consulta específica, adicione um campo
+# de referência pra "consultas" depois, pelo editor.
+#
+# Depende de uma tabela chamada "pacientes" -- importe o módulo
+# "Pacientes/Clientes" antes (ou garanta que sua tabela de pacientes já
+# existente se chama exatamente "pacientes").
+# =========================================================================
+modulo:
+  nome: "Financeiro simples (cobranças)"
+  descricao: "Valor cobrado por atendimento, forma de pagamento e status (pago/pendente)."
+  depende_de: [pacientes]
+
+tabelas:
+  - nome: cobrancas
+    label: "Cobranças"
+    icone: "payments"
+    campos:
+      - nome: paciente_id
+        label: "Paciente"
+        tipo: referencia
+        tabela_ref: pacientes
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: descricao
+        label: "Descrição (ex: Consulta 12/03)"
+        tipo: texto
+
+      - nome: data
+        label: "Data"
+        tipo: data
+
+      - nome: valor
+        label: "Valor (R$)"
+        tipo: decimal
+        minimo: 0
+
+      - nome: forma_pagamento
+        label: "Forma de pagamento"
+        tipo: texto
+
+      - nome: status
+        label: "Status (pago/pendente)"
+        tipo: texto
+        default: "pendente"
+        buscavel: true

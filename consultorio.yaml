@@ -1,0 +1,131 @@
+sistema:
+  nome: Novo Sistema
+  banco: data/consultorio.db
+tabelas:
+- nome: consultas
+  label: Consultas
+  icone: event
+  campos:
+  - nome: paciente_id
+    label: Paciente
+    tipo: referencia
+    tabela_ref: pacientes
+    campo_exibicao: nome
+    obrigatorio: true
+  - nome: data
+    label: Data
+    tipo: data
+    obrigatorio: true
+  - nome: horario
+    label: Horário
+    tipo: texto
+  - nome: status
+    label: Status (agendado/realizado/cancelado)
+    tipo: texto
+    default: agendado
+    buscavel: true
+  - nome: observacoes
+    label: Observações
+    tipo: texto_longo
+- nome: anamneses
+  label: Anamneses
+  icone: assignment
+  campos:
+  - nome: paciente_id
+    label: Paciente
+    tipo: referencia
+    tabela_ref: pacientes
+    campo_exibicao: nome
+    obrigatorio: true
+  - nome: data
+    label: Data do atendimento
+    tipo: data
+    obrigatorio: true
+  - nome: queixa_principal
+    label: Queixa principal
+    tipo: texto_longo
+  - nome: historico
+    label: Histórico
+    tipo: texto_longo
+  - nome: observacoes
+    label: Observações
+    tipo: texto_longo
+  abas:
+  - nome: Atendimento
+    campos:
+    - paciente_id
+    - data
+    - queixa_principal
+  - nome: Detalhes
+    campos:
+    - historico
+    - observacoes
+- nome: pacientes
+  label: Pacientes
+  icone: person
+  campos:
+  - nome: nome
+    label: Nome completo
+    tipo: texto
+    obrigatorio: true
+    buscavel: true
+  - nome: cpf
+    label: CPF
+    tipo: texto
+    buscavel: true
+  - nome: data_nascimento
+    label: Data de nascimento
+    tipo: data
+  - nome: telefone
+    label: Telefone
+    tipo: texto
+    buscavel: true
+  - nome: email
+    label: E-mail
+    tipo: texto
+  - nome: endereco
+    label: Endereço
+    tipo: texto
+  - nome: observacoes
+    label: Observações gerais
+    tipo: texto_longo
+  abas:
+  - nome: Dados gerais
+    campos:
+    - nome
+    - cpf
+    - data_nascimento
+    - telefone
+    - email
+  - nome: Outros
+    campos:
+    - endereco
+    - observacoes
+- nome: cobrancas
+  label: Cobranças
+  icone: payments
+  campos:
+  - nome: paciente_id
+    label: Paciente
+    tipo: referencia
+    tabela_ref: pacientes
+    campo_exibicao: nome
+    obrigatorio: true
+  - nome: descricao
+    label: 'Descrição (ex: Consulta 12/03)'
+    tipo: texto
+  - nome: data
+    label: Data
+    tipo: data
+  - nome: valor
+    label: Valor (R$)
+    tipo: decimal
+    minimo: 0
+  - nome: forma_pagamento
+    label: Forma de pagamento
+    tipo: texto
+  - nome: status
+    label: Status (pago/pendente)
+    tipo: texto
+    default: pendente
+    buscavel: true

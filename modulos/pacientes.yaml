@@ -1,0 +1,55 @@
+# =========================================================================
+# MÓDULO: Pacientes/Clientes (cadastro genérico de pessoas atendidas)
+#
+# Base pra qualquer profissional que atende pessoas: nutricionista,
+# médico, dentista, psicólogo, esteticista, personal trainer, etc.
+# Os módulos "Anamnese", "Agendamento" e "Financeiro" esperam uma tabela
+# chamada exatamente "pacientes" -- importe este módulo primeiro.
+# =========================================================================
+modulo:
+  nome: "Pacientes/Clientes"
+  descricao: "Cadastro genérico de pessoas atendidas: nome, CPF, contato, endereço, nascimento."
+  depende_de: []
+
+tabelas:
+  - nome: pacientes
+    label: "Pacientes"
+    icone: "person"
+    campos:
+      - nome: nome
+        label: "Nome completo"
+        tipo: texto
+        obrigatorio: true
+        buscavel: true
+
+      - nome: cpf
+        label: "CPF"
+        tipo: texto
+        buscavel: true
+
+      - nome: data_nascimento
+        label: "Data de nascimento"
+        tipo: data
+
+      - nome: telefone
+        label: "Telefone"
+        tipo: texto
+        buscavel: true
+
+      - nome: email
+        label: "E-mail"
+        tipo: texto
+
+      - nome: endereco
+        label: "Endereço"
+        tipo: texto
+
+      - nome: observacoes
+        label: "Observações gerais"
+        tipo: texto_longo
+
+    abas:
+      - nome: "Dados gerais"
+        campos: [nome, cpf, data_nascimento, telefone, email]
+      - nome: "Outros"
+        campos: [endereco, observacoes]

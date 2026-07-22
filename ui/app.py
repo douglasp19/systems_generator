@@ -1371,22 +1371,171 @@ class SistemaApp:
     # BACKUP
     # ------------------------------------------------------------------
     def _tela_backup(self):
-        lista_backups = backup.listar_backups()
+        """
+        Tela de Backup e Restauração.
+        Permite ao usuário escolher onde salvar o backup e restaurar de um backup existente.
+        """
+        pasta_backup_atual = preferencias.obter_preferencia(self.conn, self.usuario_logado["id"], "_pasta_backup") or "backups"
+        
+        def mostrar_lista_backups(pasta: str = None):
+            return backup.listar_backups(pasta) if pasta else backup.listar_backups()
 
         def fazer_backup_click(e):
-            destino = backup.fazer_backup(self.schema.banco_path)
+            # Usa a pasta definida pelo usuário ou pede para escolher
+            pasta_destino = pasta_backup_atual
+            if not os.path.exists(pasta_destino):
+                try:
+                    os.makedirs(pasta_destino, exist_ok=True)
+                except Exception as ex:
+                    self._notificar(f"Erro ao criar pasta: {ex}")
+                    return
+            
+            destino = backup.fazer_backup(self.schema.banco_path, pasta_destino)
             audit.registrar(self.conn, "_sistema", None, "backup", self.usuario_logado["usuario"], destino)
             self._notificar(f"Backup criado: {destino}")
             self._tela_backup()
 
+        def escolher_pasta_backup(e):
+            def on_file_pick(e):
+                if e.files and len(e.files) > 0:
+                    # Pega o diretório selecionado
+                    caminho = e.files[0].path
+                    if caminho:
+                        # Salva a preferência
+                        preferencias.salvar_preferencia(self.conn, self.usuario_logado["id"], "_pasta_backup", caminho)
+                        self._notificar(f"Pasta de backup alterada para: {caminho}")
+                        self._tela_backup()
+            
+            self.file_picker.on_result = on_file_pick
+            self.file_picker.get_directory_path(dialog_title="Escolha a pasta para salvar backups")
+
+        def restaurar_backup_click(e, arquivo_backup: str, pasta: str):
+            caminho_completo = os.path.join(pasta, arquivo_backup)
+            
+            def confirmar_restauracao(e):
+                self.page.close_dialog()
+                
+                # Fecha conexões ativas antes de restaurar (se necessário)
+                # Nota: Em produção, pode ser necessário fechar outras janelas/conexões
+                
+                sucesso = backup.restaurar_backup(self.schema.banco_path, caminho_completo)
+                
+                if sucesso:
+                    audit.registrar(self.conn, "_sistema", None, "restaurar_backup", self.usuario_logado["usuario"], caminho_completo)
+                    self._notificar(f"Backup restaurado com sucesso! O sistema será reiniciado.")
+                    
+                    # Reinicia o app após restauração
+                    import time
+                    time.sleep(1)
+                    self.page.window.destroy()
+                    # O usuário precisará reabrir o sistema
+                else:
+                    self._notificar("Erro ao restaurar backup. Verifique se o arquivo existe.")
+            
+            dialogo_confirmacao = ft.AlertDialog(
+                modal=True,
+                title=ft.Text("Confirmar restauração"),
+                content=ft.Text(f"Tem certeza que deseja restaurar o backup '{arquivo_backup}'?\n\nO estado atual do banco será salvo como backup preventivo."),
+                actions=[
+                    ft.TextButton("Cancelar", on_click=lambda e: self.page.close_dialog()),
+                    ft.FilledButton("Restaurar", on_click=confirmar_restauracao),
+                ],
+                actions_alignment=ft.MainAxisAlignment.END,
+            )
+            self.page.dialog = dialogo_confirmacao
+            dialogo_confirmacao.open = True
+            self.page.update()
+
+        lista_backups = mostrar_lista_backups(pasta_backup_atual)
+        
+        itens_backup = []
+        for b in lista_backups:
+            caminho_completo = os.path.join(pasta_backup_atual, b)
+            data_modificacao = ""
+            try:
+                timestamp = os.path.getmtime(caminho_completo)
+                from datetime import datetime
+                data_modificacao = datetime.fromtimestamp(timestamp).strftime("%d/%m/%Y %H:%M")
+            except:
+                pass
+            
+            itens_backup.append(
+                ft.Container(
+                    content=ft.Row(
+                        [
+                            ft.Icon(ft.Icons.DATABASE, color=ft.Colors.BLUE),
+                            ft.Column(
+                                [
+                                    ft.Text(b, weight=ft.FontWeight.BOLD),
+                                    ft.Text(f"Criado em: {data_modificacao}", size=11, color=ft.Colors.GREY_600),
+                                ],
+                                spacing=2,
+                            ),
+                            ft.Container(expand=True),
+                            ft.ElevatedButton(
+                                "Restaurar",
+                                icon=ft.Icons.RESTORE,
+                                on_click=lambda e, backup_file=b: restaurar_backup_click(e, backup_file, pasta_backup_atual),
+                                style=ft.ButtonStyle(color=ft.Colors.WHITE, bgcolor=ft.Colors.GREEN),
+                            ),
+                        ],
+                        alignment=ft.MainAxisAlignment.START,
+                    ),
+                    padding=10,
+                    margin=ft.margin.only(bottom=5),
+                    border=ft.border.all(1, ft.Colors.GREY_300),
+                    border_radius=5,
+                )
+            )
+        
+        if not itens_backup:
+            itens_backup = [ft.Text("Nenhum backup encontrado nesta pasta.", color=ft.Colors.GREY_600)]
+
         self.area_conteudo.content = ft.Column(
             [
-                ft.Text("Backup do banco de dados", size=20, weight=ft.FontWeight.BOLD),
-                ft.ElevatedButton("Fazer backup agora", icon=ft.Icons.SAVE, on_click=fazer_backup_click),
+                ft.Text("Backup e Restauração", size=20, weight=ft.FontWeight.BOLD),
+                ft.Container(height=10),
+                ft.Card(
+                    content=ft.Container(
+                        content=ft.Column(
+                            [
+                                ft.Text("Configurações de Backup", weight=ft.FontWeight.BOLD, size=16),
+                                ft.Text(f"Pasta atual: {pasta_backup_atual}", size=12),
+                                ft.Row(
+                                    [
+                                        ft.ElevatedButton(
+                                            "Alterar pasta de backup",
+                                            icon=ft.Icons.FOLDER_OPEN,
+                                            on_click=escolher_pasta_backup,
+                                        ),
+                                        ft.ElevatedButton(
+                                            "Fazer backup agora",
+                                            icon=ft.Icons.SAVE,
+                                            on_click=fazer_backup_click,
+                                            style=ft.ButtonStyle(bgcolor=ft.Colors.BLUE, color=ft.Colors.WHITE),
+                                        ),
+                                    ],
+                                    spacing=15,
+                                ),
+                            ],
+                            spacing=10,
+                        ),
+                        padding=15,
+                    ),
+                ),
                 ft.Divider(),
-                ft.Text("Backups existentes:", weight=ft.FontWeight.BOLD),
-                ft.Column([ft.Text(b) for b in lista_backups] or [ft.Text("Nenhum backup ainda.")]),
-            ]
+                ft.Text("Backups disponíveis:", weight=ft.FontWeight.BOLD, size=16),
+                ft.Column(itens_backup, spacing=5),
+                ft.Container(height=20),
+                ft.Text(
+                    "⚠️ Atenção: Ao restaurar um backup, o estado atual do banco será automaticamente salvo como backup preventivo.",
+                    size=11,
+                    color=ft.Colors.ORANGE_700,
+                    italic=True,
+                ),
+            ],
+            scroll=ft.ScrollMode.AUTO,
+            expand=True,
         )
         self.page.update()
 

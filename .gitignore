@@ -1,27 +1,10 @@
-# Python
+```gitignore
+# Python cache files
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-venv/
+*.pyd
 
-# Dados gerados por cliente (bancos SQLite, exports, backups, cupons de teste)
-data/
-exports/
-backups/
-cupons_teste/
-*.db
-
-# Segredos (tokens de gateway fiscal etc. -- NUNCA versionar)
-.env
-
-# Build (pyinstaller / flet pack)
-build/
-dist/
-*.spec
-schema_embutido.yaml
-*.iss
-
-# Editor/IDE
-.vscode/
-.idea/
+# Compiled Python files
+*.cpython-*.pyc
+```

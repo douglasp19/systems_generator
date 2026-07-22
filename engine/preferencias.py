@@ -53,3 +53,41 @@ def definir_larguras_colunas(conn: sqlite3.Connection, usuario_id: int, tabela_n
         [(usuario_id, tabela_nome, campo, largura) for campo, largura in larguras.items()],
     )
     conn.commit()
+
+
+def obter_preferencia(conn: sqlite3.Connection, usuario_id: int, chave: str) -> str | None:
+    """
+    Obtém uma preferência genérica do usuário pelo nome da chave.
+    
+    Args:
+        conn: Conexão com o banco de dados
+        usuario_id: ID do usuário
+        chave: Nome da preferência (ex: '_pasta_backup')
+    
+    Returns:
+        Valor da preferência como string, ou None se não existir
+    """
+    cur = conn.execute(
+        "SELECT valor FROM _preferencias WHERE usuario_id = ? AND chave = ?",
+        (usuario_id, chave),
+    )
+    row = cur.fetchone()
+    return row["valor"] if row else None
+
+
+def salvar_preferencia(conn: sqlite3.Connection, usuario_id: int, chave: str, valor: str):
+    """
+    Salva ou atualiza uma preferência genérica do usuário.
+    
+    Args:
+        conn: Conexão com o banco de dados
+        usuario_id: ID do usuário
+        chave: Nome da preferência (ex: '_pasta_backup')
+        valor: Valor da preferência
+    """
+    conn.execute(
+        """INSERT OR REPLACE INTO _preferencias (usuario_id, chave, valor) 
+           VALUES (?, ?, ?)""",
+        (usuario_id, chave, valor),
+    )
+    conn.commit()

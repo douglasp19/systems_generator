@@ -113,6 +113,16 @@ def _criar_tabela_sistema(conn: sqlite3.Connection):
             valor TEXT
         )
     """)
+    # Preferências genéricas por usuário (ex: pasta de backup, tema, etc.)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS _preferencias (
+            usuario_id INTEGER NOT NULL,
+            chave TEXT NOT NULL,
+            valor TEXT,
+            PRIMARY KEY (usuario_id, chave),
+            FOREIGN KEY (usuario_id) REFERENCES _usuarios(id)
+        )
+    """)
     conn.commit()
 
 

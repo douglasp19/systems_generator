@@ -363,13 +363,68 @@ python main.py
 
 ## Gerando um executável para o cliente (sem precisar instalar Python)
 
+O jeito mais rápido é o botão **"Gerar executável"** no editor visual
+(ao lado de "Rodar sistema"): salva o schema, roda o empacotamento numa
+janela de terminal separada (assim dá pra acompanhar o progresso e ver
+qualquer erro) e usa o nome do sistema como nome do `.exe`. Pode levar
+alguns minutos -- quando terminar, o executável fica em `dist/`.
+
+Isso equivale a rodar manualmente:
+
 ```bash
 pip install pyinstaller
-flet pack main.py --name SistemaCliente --add-data "schema_clientex.yaml:."
+flet pack main.py --name SistemaCliente --add-data "schema_clientex.yaml:." --hidden-import appdirs
 ```
 
 Isso gera um `.exe`/binário standalone que o cliente pode simplesmente
-abrir com duplo clique.
+abrir com duplo clique -- sem precisar instalar Python nem nenhuma
+dependência. Se quiser mais controle (ícone customizado, versão de
+arquivo, modo pasta em vez de arquivo único), rode o comando manualmente
+com as opções de `flet pack --help`.
+
+> **Por que o botão copia o schema pra `schema_embutido.yaml` antes de
+> empacotar?** Um `.exe` gerado pelo PyInstaller, ao rodar com duplo
+> clique, não tem a pasta atual apontando pra onde os arquivos de
+> `--add-data` foram extraídos -- por isso `main.py` não pode usar um
+> caminho relativo simples pra achar o schema. Pra resolver isso de
+> forma genérica (o schema de cada cliente tem um nome diferente), o
+> botão copia o `.yaml` escolhido pra esse nome fixo antes de chamar o
+> `flet pack`, e `main.py` sabe procurar exatamente por esse nome dentro
+> do executável (via `sys._MEIPASS`, que aponta pro lugar certo nos dois
+> modos de empacotamento). O arquivo `schema_embutido.yaml` que aparece
+> na raiz do projeto depois de gerar é só esse artefato de build (já
+> está no `.gitignore`) -- pode apagar sem problema.
+
+> **Onde o sistema instalado guarda os dados.** Quando instalado em
+> `Program Files` (padrão do instalador), o usuário comum do Windows não
+> tem permissão de gravar ali -- e o motor grava banco, backups,
+> exports, cupons de teste e logo em pastas relativas tipo `data/`. Sem
+> tratar isso, o sistema quebra com `PermissionError: Acesso negado` na
+> primeira gravação. Por isso, ao rodar já empacotado, `main.py` troca a
+> pasta de trabalho do processo pra `%LOCALAPPDATA%\<NomeDoExecutável>\`
+> (gravável por qualquer usuário) antes de tocar em qualquer arquivo --
+> os dados de cada sistema instalado ficam isolados nessa pasta, sem
+> precisar mudar nada no resto do motor. Rodando com `python main.py`
+> (modo desenvolvimento), nada muda: continua gravando na pasta atual,
+> como sempre.
+
+### Instalador de verdade (com atalho e desinstalador)
+
+Pra entregar algo mais profissional que um `.exe` solto -- com atalho no
+menu iniciar, ícone na área de trabalho (opcional) e desinstalador --
+use o botão **"Gerar instalador"**, ao lado de "Gerar executável".
+
+Exige o [Inno Setup](https://jrsoftware.org/isdl.php) instalado uma vez
+na máquina (gratuito). O botão então, em sequência:
+
+1. Empacota o sistema em modo pasta (`flet pack --onedir`).
+2. Gera um script `.iss` (Inno Setup) preenchido com o nome do sistema.
+3. Compila o instalador com o `ISCC.exe` do Inno Setup.
+
+O instalador final fica em `dist/instalador/<NomeDoSistema>_Instalador.exe`
+-- é esse arquivo que você entrega pro cliente. Se o Inno Setup não
+estiver instalado, o botão avisa e não tenta nada (pra não gastar tempo
+com um build que não vai virar instalador).
 
 ## Editor visual de schema
 

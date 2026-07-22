@@ -19,6 +19,8 @@ cupons_teste/
 build/
 dist/
 *.spec
+schema_embutido.yaml
+*.iss
 
 # Editor/IDE
 .vscode/

@@ -8,12 +8,85 @@ sobre os dataclasses de engine/schema_loader.py), para que seções que o
 editor ainda não sabe montar visualmente (ex: configuração de
 impressora, fiscal por tabela) sejam preservadas ao salvar.
 """
+import asyncio
 import os
+import re
+import shutil
 import subprocess
 import sys
 
 import flet as ft
 import yaml
+
+# Raiz do projeto (onde ficam main.py e a pasta modulos/) -- calculada a
+# partir deste arquivo pra funcionar independente da pasta de onde o
+# editor foi iniciado.
+PROJETO_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+# Precisa bater com main.py: nome fixo que o schema escolhido leva
+# dentro do executável, independente do nome real do arquivo .yaml.
+# Sem isso, main.py (rodando já empacotado) não saberia qual arquivo
+# procurar -- cada cliente pode nomear o schema como quiser.
+NOME_SCHEMA_EMPACOTADO = "schema_embutido.yaml"
+
+
+def _preparar_schema_para_empacotar(caminho_arquivo: str) -> str:
+    """Copia o schema escolhido pra um nome fixo na raiz do projeto, pra
+    ser embutido no executável com --add-data. Retorna o caminho da
+    cópia (é isso que entra no --add-data, não o arquivo original)."""
+    destino = os.path.join(PROJETO_DIR, NOME_SCHEMA_EMPACOTADO)
+    shutil.copyfile(os.path.abspath(caminho_arquivo), destino)
+    return destino
+
+# Caminhos comuns de instalação do Inno Setup 6 no Windows, além do PATH.
+_CAMINHOS_ISCC = [
+    r"C:\Program Files (x86)\Inno Setup 6\ISCC.exe",
+    r"C:\Program Files\Inno Setup 6\ISCC.exe",
+]
+
+
+def _localizar_iscc() -> str | None:
+    """Acha o compilador de linha de comando do Inno Setup (ISCC.exe),
+    usado pra gerar o instalador. Retorna None se não estiver instalado."""
+    encontrado = shutil.which("iscc")
+    if encontrado:
+        return encontrado
+    for caminho in _CAMINHOS_ISCC:
+        if os.path.isfile(caminho):
+            return caminho
+    return None
+
+
+_TEMPLATE_ISS = """\
+[Setup]
+AppName={nome_sistema}
+AppVersion=1.0.0
+DefaultDirName={{autopf}}\\{nome_executavel}
+DefaultGroupName={nome_sistema}
+UninstallDisplayIcon={{app}}\\{nome_executavel}.exe
+OutputDir={pasta_saida}
+OutputBaseFilename={nome_executavel}_Instalador
+Compression=lzma
+SolidCompression=yes
+ArchitecturesInstallIn64BitMode=x64compatible
+
+[Languages]
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\\BrazilianPortuguese.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; GroupDescription: "Atalhos adicionais"
+
+[Files]
+Source: "{pasta_build}\\*"; DestDir: "{{app}}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Icons]
+Name: "{{group}}\\{nome_sistema}"; Filename: "{{app}}\\{nome_executavel}.exe"
+Name: "{{group}}\\Desinstalar {nome_sistema}"; Filename: "{{uninstallexe}}"
+Name: "{{autodesktop}}\\{nome_sistema}"; Filename: "{{app}}\\{nome_executavel}.exe"; Tasks: desktopicon
+
+[Run]
+Filename: "{{app}}\\{nome_executavel}.exe"; Description: "Abrir {nome_sistema} agora"; Flags: nowait postinstall skipifsilent
+"""
 
 TIPOS_CAMPO = [
     ("texto", "Texto curto"),
@@ -32,7 +105,7 @@ ICONES_SUGERIDOS = [
 
 # Pasta com os módulos prontos (blocos de tabelas reutilizáveis, ex:
 # "Pacientes", "Anamnese") -- fica na raiz do projeto, ao lado de main.py.
-MODULOS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "modulos")
+MODULOS_DIR = os.path.join(PROJETO_DIR, "modulos")
 
 
 def _listar_modulos() -> list[dict]:
@@ -152,6 +225,124 @@ class SchemaEditorApp:
         subprocess.Popen([sys.executable, "main.py", self.caminho_arquivo])
         self._notificar(f"Abrindo sistema com {self.caminho_arquivo}...")
 
+    def _gerar_executavel_click(self, e):
+        if not self.caminho_arquivo:
+            self._notificar("Salve o schema antes de gerar o executável.")
+            return
+
+        nome_sistema = self.bruto.get("sistema", {}).get("nome", "Sistema")
+        nome_executavel = re.sub(r"[^A-Za-z0-9_]+", "_", nome_sistema).strip("_") or "Sistema"
+
+        caminho_schema = _preparar_schema_para_empacotar(self.caminho_arquivo)
+        comando = [
+            "flet", "pack", "main.py",
+            "--name", nome_executavel,
+            "--add-data", f"{caminho_schema}:.",
+            # 'appdirs' é usado pelo python-escpos (impressora térmica) mas o
+            # PyInstaller não detecta essa dependência sozinho -- sem isso o
+            # executável gerado quebra com "ImportError: The 'appdirs'
+            # package is required" ao abrir.
+            "--hidden-import", "appdirs",
+        ]
+
+        flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+        try:
+            subprocess.Popen(comando, cwd=PROJETO_DIR, creationflags=flags)
+        except FileNotFoundError:
+            self._notificar(
+                "Comando 'flet' não encontrado. Rode 'pip install flet[all] pyinstaller' "
+                "no ambiente Python usado por este projeto."
+            )
+            return
+
+        self._notificar(
+            f"Gerando executável '{nome_executavel}' numa janela de terminal separada "
+            f"-- acompanhe o progresso ali. Quando terminar, ele fica em "
+            f"'{os.path.join(PROJETO_DIR, 'dist')}'. Isso pode levar alguns minutos."
+        )
+
+    async def _gerar_instalador_click(self, e):
+        if not self.caminho_arquivo:
+            self._notificar("Salve o schema antes de gerar o instalador.")
+            return
+
+        caminho_iscc = _localizar_iscc()
+        if not caminho_iscc:
+            self._notificar(
+                "Inno Setup não encontrado. Instale (grátis) em jrsoftware.org/isdl.php "
+                "e tente de novo -- o instalador padrão já deixa o ISCC.exe pronto pra uso."
+            )
+            return
+
+        nome_sistema = self.bruto.get("sistema", {}).get("nome", "Sistema")
+        nome_executavel = re.sub(r"[^A-Za-z0-9_]+", "_", nome_sistema).strip("_") or "Sistema"
+        caminho_schema = _preparar_schema_para_empacotar(self.caminho_arquivo)
+
+        pasta_build = os.path.join(PROJETO_DIR, "dist", nome_executavel)
+        pasta_saida = os.path.join(PROJETO_DIR, "dist", "instalador")
+
+        # 1) empacota em modo "pasta" (onedir) -- o Inno Setup precisa dos
+        # arquivos soltos numa pasta pra copiar, diferente do modo "arquivo
+        # único" usado pelo botão "Gerar executável".
+        comando_build = [
+            "flet", "pack", "main.py",
+            "--name", nome_executavel,
+            "--onedir",
+            "--add-data", f"{caminho_schema}:.",
+            "--hidden-import", "appdirs",
+        ]
+
+        self._notificar(f"Gerando '{nome_executavel}'... isso pode levar alguns minutos.")
+        flags = subprocess.CREATE_NEW_CONSOLE if os.name == "nt" else 0
+        try:
+            resultado_build = await asyncio.to_thread(
+                subprocess.run, comando_build, cwd=PROJETO_DIR, creationflags=flags,
+            )
+        except FileNotFoundError:
+            self._notificar(
+                "Comando 'flet' não encontrado. Rode 'pip install flet[all] pyinstaller' "
+                "no ambiente Python usado por este projeto."
+            )
+            return
+        finally:
+            # o build (bem ou mal sucedido) já terminou de ler o arquivo
+            # a essa altura -- diferente do botão "Gerar executável", que
+            # não espera o processo terminar e por isso não pode limpar.
+            if os.path.exists(caminho_schema):
+                os.remove(caminho_schema)
+
+        if resultado_build.returncode != 0:
+            self._notificar(
+                f"Falha ao gerar '{nome_executavel}' (veja a janela de terminal que abriu) "
+                f"-- instalador não foi criado."
+            )
+            return
+
+        # 2) gera o script do Inno Setup pra essa pasta e compila o instalador
+        os.makedirs(pasta_saida, exist_ok=True)
+        conteudo_iss = _TEMPLATE_ISS.format(
+            nome_sistema=nome_sistema,
+            nome_executavel=nome_executavel,
+            pasta_build=pasta_build,
+            pasta_saida=pasta_saida,
+        )
+        caminho_iss = os.path.join(PROJETO_DIR, "dist", f"{nome_executavel}.iss")
+        with open(caminho_iss, "w", encoding="utf-8") as f:
+            f.write(conteudo_iss)
+
+        self._notificar("Compilando o instalador com o Inno Setup...")
+        resultado_iscc = await asyncio.to_thread(
+            subprocess.run, [caminho_iscc, caminho_iss], cwd=PROJETO_DIR, creationflags=flags,
+        )
+
+        if resultado_iscc.returncode != 0:
+            self._notificar(
+                "Falha ao compilar o instalador (veja a janela de terminal que abriu)."
+            )
+            return
+
+        self._notificar(f"Instalador pronto em '{pasta_saida}'.")
+
     # ------------------------------------------------------------------
     # LAYOUT GERAL
     # ------------------------------------------------------------------
@@ -170,6 +361,10 @@ class SchemaEditorApp:
                 ft.OutlinedButton("Abrir", icon=ft.Icons.FOLDER_OPEN, on_click=self._abrir_click),
                 ft.ElevatedButton("Salvar", icon=ft.Icons.SAVE, on_click=self._salvar_click),
                 ft.OutlinedButton("Rodar sistema", icon=ft.Icons.PLAY_ARROW, on_click=self._rodar_sistema_click),
+                ft.OutlinedButton("Gerar executável", icon=ft.Icons.INVENTORY_2,
+                                  on_click=self._gerar_executavel_click),
+                ft.OutlinedButton("Gerar instalador", icon=ft.Icons.DOWNLOAD_FOR_OFFLINE,
+                                  on_click=self._gerar_instalador_click),
             ],
             scroll=ft.ScrollMode.AUTO,
         )

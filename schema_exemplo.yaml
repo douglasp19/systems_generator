@@ -101,6 +101,13 @@ tabelas:
       - nome: "Outros"
         campos: [observacoes]
 
+    # Aviso na tela de lista quando "quantidade" fica abaixo de
+    # "estoque_minimo" -- destaca a linha e mostra um banner no topo.
+    alerta_estoque:
+      ativo: true
+      campo_quantidade: quantidade
+      campo_minimo: estoque_minimo
+
   - nome: fornecedores
     label: "Fornecedores"
     icone: "local_shipping"
@@ -212,12 +219,16 @@ tabelas:
         campos: [observacoes]
 
     # Cupom não fiscal impresso na impressora térmica (recibo simples,
-    # não confundir com a NF-e/DANFE emitida pelo gateway fiscal abaixo)
+    # não confundir com a NF-e/DANFE emitida pelo gateway fiscal abaixo).
+    # auto_imprimir: true faria o cupom sair sozinho ao salvar a venda --
+    # aqui deixamos manual (botão de impressora na lista) de propósito,
+    # já que essa venda ainda depende de emitir a NF-e depois.
     impressao:
       ativo: true
       titulo: "Recibo de Venda"
       campos: [cliente_id, data_venda, valor_total, forma_pagamento]
       rodape: "Obrigado pela preferência!"
+      auto_imprimir: false
 
     # Emissão de NF-e (nota que acompanha a mercadoria, gera o DANFE).
     # Precisa de um destinatário (campo_destinatario) e de uma tabela
@@ -280,3 +291,14 @@ tabelas:
         label: "CFOP"
         tipo: texto
         obrigatorio: false
+
+    # Baixa automática de estoque: ao lançar um item de venda, desconta
+    # "quantidade" do campo "quantidade" do produto referenciado (e
+    # devolve se o item for editado/excluído depois). Sem isso, o
+    # estoque de produtos precisaria ser ajustado manualmente a cada venda.
+    baixa_estoque:
+      ativo: true
+      tabela_estoque: produtos
+      campo_produto: produto_id
+      campo_quantidade: quantidade
+      campo_estoque: quantidade

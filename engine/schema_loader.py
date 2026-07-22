@@ -37,6 +37,9 @@ class Campo:
     # (ex: validar formato de e-mail ou CPF/CNPJ)
     regex: Optional[str] = None
     regex_mensagem: Optional[str] = None
+    # largura da coluna (em pixels) na tela de lista. Se não informado, o
+    # motor calcula uma largura automática a partir do tamanho do rótulo.
+    largura: Optional[float] = None
 
     def __post_init__(self):
         if self.tipo not in TIPOS_SQLITE:
@@ -92,6 +95,9 @@ class ImpressaoConfig:
     titulo: str = ""
     campos: list[str] = field(default_factory=list)  # quais campos entram no cupom
     rodape: str = ""
+    # Se true, imprime o cupom sozinho assim que um registro NOVO é salvo
+    # (não reimprime ao editar) -- sem precisar clicar no botão de impressora.
+    auto_imprimir: bool = False
 
 
 @dataclass
@@ -125,6 +131,37 @@ class FiscalConfig:
     campo_descricao: Optional[str] = None   # campo usado como descrição do item/serviço
 
 
+@dataclass
+class AlertaEstoqueConfig:
+    """Aviso na tela de lista quando a quantidade em estoque de um
+    registro fica abaixo do mínimo configurado (ex: produtos).
+
+    'campo_quantidade' e 'campo_minimo' são os nomes dos campos
+    (inteiro/decimal) da própria tabela que guardam, respectivamente, a
+    quantidade atual e o estoque mínimo desejado."""
+    ativo: bool = False
+    campo_quantidade: Optional[str] = None
+    campo_minimo: Optional[str] = None
+
+
+@dataclass
+class BaixaEstoqueConfig:
+    """Baixa automática de estoque: ao criar/editar/excluir um registro
+    nesta tabela (ex: um item de venda), ajusta a quantidade em estoque
+    do produto referenciado, sem precisar de nenhuma ação manual.
+
+    'tabela_estoque' é a tabela que guarda o estoque (ex: produtos).
+    'campo_produto' é o campo (tipo referencia) desta tabela que aponta
+    pro produto. 'campo_quantidade' é o campo numérico desta tabela com
+    a quantidade vendida/usada. 'campo_estoque' é o campo numérico, na
+    tabela de estoque, que guarda a quantidade disponível."""
+    ativo: bool = False
+    tabela_estoque: Optional[str] = None
+    campo_produto: Optional[str] = None
+    campo_quantidade: Optional[str] = None
+    campo_estoque: Optional[str] = None
+
+
 def encontrar_campo_fk_para(tabela_filha: "Tabela", nome_tabela_pai: str) -> Optional[Campo]:
     """Dado uma tabela de itens (filha) e o nome da tabela pai (ex: 'vendas'),
     encontra automaticamente qual campo dela é a referência de volta pro pai.
@@ -145,6 +182,8 @@ class Tabela:
     abas: list[Aba] = field(default_factory=list)
     impressao: ImpressaoConfig = field(default_factory=ImpressaoConfig)
     fiscal: FiscalConfig = field(default_factory=FiscalConfig)
+    alerta_estoque: AlertaEstoqueConfig = field(default_factory=AlertaEstoqueConfig)
+    baixa_estoque: BaixaEstoqueConfig = field(default_factory=BaixaEstoqueConfig)
 
     def campo(self, nome: str) -> Optional[Campo]:
         for c in self.campos:
@@ -183,6 +222,10 @@ class FiscalGlobalConfig:
     api_url: str = ""
     api_token_env: str = ""       # nome da variável de ambiente com o token (nunca no YAML!)
     cnpj_emitente: str = ""
+    # Token digitado pelo admin na tela de Configurações (guardado no
+    # banco do sistema, não no YAML). Tem prioridade sobre api_token_env
+    # quando preenchido -- ver engine/configuracoes.py.
+    api_token: str = ""
 
 
 @dataclass
@@ -192,6 +235,11 @@ class Schema:
     tabelas: list[Tabela] = field(default_factory=list)
     impressora: ImpressoraConfig = field(default_factory=ImpressoraConfig)
     fiscal: FiscalGlobalConfig = field(default_factory=FiscalGlobalConfig)
+    # Caminho da logo (imagem local) escolhida pelo admin na tela de
+    # Configurações -- não vem do YAML, só é preenchido em tempo de
+    # execução (ver engine/configuracoes.py). Aparece na tela de login e
+    # no cabeçalho do sistema.
+    logo_path: str = ""
 
     def tabela(self, nome: str) -> Optional[Tabela]:
         for t in self.tabelas:
@@ -218,6 +266,12 @@ def carregar_schema(caminho_yaml: str) -> Schema:
         fiscal_bruto = t.get("fiscal", {})
         fiscal_tabela = FiscalConfig(**fiscal_bruto) if fiscal_bruto else FiscalConfig()
 
+        alerta_estoque_bruto = t.get("alerta_estoque", {})
+        alerta_estoque = AlertaEstoqueConfig(**alerta_estoque_bruto) if alerta_estoque_bruto else AlertaEstoqueConfig()
+
+        baixa_estoque_bruto = t.get("baixa_estoque", {})
+        baixa_estoque = BaixaEstoqueConfig(**baixa_estoque_bruto) if baixa_estoque_bruto else BaixaEstoqueConfig()
+
         tabelas.append(
             Tabela(
                 nome=t["nome"],
@@ -227,6 +281,8 @@ def carregar_schema(caminho_yaml: str) -> Schema:
                 abas=abas,
                 impressao=impressao,
                 fiscal=fiscal_tabela,
+                alerta_estoque=alerta_estoque,
+                baixa_estoque=baixa_estoque,
             )
         )
 

@@ -1,0 +1,45 @@
+# =========================================================================
+# MÓDULO: Agendamento / Consultas
+#
+# Data, horário, paciente e status de cada consulta -- praticamente todo
+# profissional liberal que atende por hora marcada precisa disso.
+#
+# Depende de uma tabela chamada "pacientes" -- importe o módulo
+# "Pacientes/Clientes" antes (ou garanta que sua tabela de pacientes já
+# existente se chama exatamente "pacientes").
+# =========================================================================
+modulo:
+  nome: "Agendamento / Consultas"
+  descricao: "Data, horário, paciente e status (agendado/realizado/cancelado) de cada consulta."
+  depende_de: [pacientes]
+
+tabelas:
+  - nome: consultas
+    label: "Consultas"
+    icone: "event"
+    campos:
+      - nome: paciente_id
+        label: "Paciente"
+        tipo: referencia
+        tabela_ref: pacientes
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: data
+        label: "Data"
+        tipo: data
+        obrigatorio: true
+
+      - nome: horario
+        label: "Horário"
+        tipo: texto
+
+      - nome: status
+        label: "Status (agendado/realizado/cancelado)"
+        tipo: texto
+        default: "agendado"
+        buscavel: true
+
+      - nome: observacoes
+        label: "Observações"
+        tipo: texto_longo

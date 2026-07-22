@@ -1,0 +1,51 @@
+# =========================================================================
+# MÓDULO: Anamnese / Histórico clínico
+#
+# Ficha de atendimento vinculada ao paciente: queixa, histórico,
+# observações. Texto genérico o bastante pra nutricionista, médico,
+# dentista, psicólogo, terapeuta etc. -- ajuste os rótulos dos campos
+# pro vocabulário específico do seu cliente depois de importar, se quiser.
+#
+# Depende de uma tabela chamada "pacientes" -- importe o módulo
+# "Pacientes/Clientes" antes (ou garanta que sua tabela de pacientes já
+# existente se chama exatamente "pacientes").
+# =========================================================================
+modulo:
+  nome: "Anamnese / Histórico clínico"
+  descricao: "Ficha de atendimento vinculada ao paciente: queixa, histórico, observações."
+  depende_de: [pacientes]
+
+tabelas:
+  - nome: anamneses
+    label: "Anamneses"
+    icone: "assignment"
+    campos:
+      - nome: paciente_id
+        label: "Paciente"
+        tipo: referencia
+        tabela_ref: pacientes
+        campo_exibicao: nome
+        obrigatorio: true
+
+      - nome: data
+        label: "Data do atendimento"
+        tipo: data
+        obrigatorio: true
+
+      - nome: queixa_principal
+        label: "Queixa principal"
+        tipo: texto_longo
+
+      - nome: historico
+        label: "Histórico"
+        tipo: texto_longo
+
+      - nome: observacoes
+        label: "Observações"
+        tipo: texto_longo
+
+    abas:
+      - nome: "Atendimento"
+        campos: [paciente_id, data, queixa_principal]
+      - nome: "Detalhes"
+        campos: [historico, observacoes]

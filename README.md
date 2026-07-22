@@ -38,6 +38,7 @@ sistema_generator/
 │   └── backup.py             # backup do banco
 ├── ui/
 │   └── app.py                # interface Flet, gerada a partir do schema
+├── modulos/                  # blocos de tabelas prontos (importáveis pelo editor visual)
 ├── data/                     # onde fica o arquivo .db do cliente
 ├── exports/                  # arquivos exportados
 └── backups/                  # backups automáticos
@@ -45,7 +46,12 @@ sistema_generator/
 
 ## Criando um sistema novo para um cliente
 
-1. Copie `schema_exemplo.yaml` para `schema_clientex.yaml`
+1. Escolha um ponto de partida e copie para `schema_clientex.yaml`:
+   - `schema_estoque.yaml` — só estoque (produtos, fornecedores, movimentações)
+   - `schema_clientes.yaml` — cadastro de clientes + histórico de interações (CRM simples)
+   - `schema_os.yaml` — ordens de serviço (clientes, equipamentos, status, valor)
+   - `schema_exemplo.yaml` — estoque + vendas + NF-e (distribuidor B2B)
+   - `schema_loja_eletronicos.yaml` — estoque + vendas + NFC-e (venda de balcão)
 2. Edite o nome do sistema e o caminho do banco:
    ```yaml
    sistema:
@@ -73,7 +79,9 @@ Pronto — sistema funcionando, sem escrever nenhuma linha de código de tela.
 | `referencia` | liga a um registro de outra tabela    | INTEGER (FK)   |
 
 Cada campo aceita: `label` (texto exibido na tela), `obrigatorio` (true/false),
-`buscavel` (se aparece na busca da lista) e `default` (valor padrão).
+`buscavel` (se aparece na busca da lista), `default` (valor padrão) e
+`largura` (largura em pixels da coluna na tela de lista -- opcional, veja
+"Colunas ajustáveis e filtro de colunas" mais abaixo).
 
 ### Relacionamento entre tabelas (`referencia`)
 
@@ -144,6 +152,25 @@ Um botão de impressora aparece na lista dessa tabela.
 
 Funciona com a maioria das térmicas do mercado (Epson, Elgin, Bematech,
 Tanca...) via protocolo ESC/POS, usando a biblioteca `python-escpos`.
+
+### Impressão automática ao salvar
+
+Por padrão o cupom só sai quando alguém clica no botão de impressora na
+lista. Se o cliente preferir que o cupom saia sozinho assim que a venda é
+cadastrada (sem precisar desse clique extra), ative:
+
+```yaml
+impressao:
+  ativo: true
+  titulo: "Recibo de Venda"
+  campos: [produto_id, quantidade_vendida, valor_total, forma_pagamento]
+  rodape: "Obrigado pela preferência!"
+  auto_imprimir: true
+```
+
+Só imprime sozinho ao **criar** um registro novo (não reimprime quando
+o registro é editado depois) -- o botão manual continua disponível para
+reimprimir uma segunda via quando precisar.
 
 ## Nota fiscal (NF-e / NFC-e) — qual escolher?
 
@@ -233,6 +260,28 @@ automaticamente) e mostra o que seria enviado, sem emitir nada de
 verdade. Isso permite testar o fluxo inteiro antes de contratar um
 provedor.
 
+### Fila de retry (se a internet cair na hora da venda)
+
+Emitir a nota exige internet no momento -- se a conexão cair bem na hora
+de fechar a venda, o sistema não perde a emissão: guarda a nota como
+**pendente** e mostra um aviso (`Sem conexão com o gateway fiscal. A
+nota ficou pendente...`) em vez de travar a venda.
+
+- **Reenvio automático**: a cada login, o sistema tenta reemitir sozinho
+  todas as notas pendentes. Se a internet já tiver voltado, elas saem
+  sem precisar de nenhuma ação.
+- **Tela "Notas Pendentes"**: aparece no menu (abaixo de Auditoria)
+  sempre que `sistema.fiscal.ativo: true` no schema. Lista tentativas e
+  último erro de cada pendência, com um botão para tentar novamente uma
+  nota específica ou todas de uma vez.
+- Assim como Auditoria e Backup, essa aba pode ser liberada ou
+  escondida por usuário no cadastro de conta (veja a seção de
+  permissões mais abaixo, em Usuários).
+
+Isso cobre quedas de conexão -- erros de dados (ex: item faltando,
+destinatário inválido) continuam aparecendo na hora, já que reenviar não
+resolveria o problema.
+
 ### Antes de ir pra produção com um cliente
 
 1. Escolha um gateway fiscal (compare preço, suporte e documentação).
@@ -244,6 +293,54 @@ provedor.
 4. Ajuste o payload em `engine/fiscal.py` conforme a documentação
    exata do provedor escolhido (o formato varia entre eles).
 5. Teste tudo em ambiente de homologação antes de trocar pra produção.
+
+## Configurações pela conta admin (logo, impressora, fiscal e cupom)
+
+Além de configurar impressora e fiscal no YAML (`sistema.impressora` e
+`sistema.fiscal`), a conta admin pode ajustar tudo isso **dentro do
+próprio sistema rodando**, na aba "Configurações" -- sem editar arquivo
+nem reiniciar:
+
+- **Aparência (logo)**: escolhe uma imagem (PNG/JPG) pelo seletor de
+  arquivos do próprio sistema operacional. Ela passa a aparecer na tela
+  de login e no canto superior esquerdo do sistema, ao lado do nome.
+  Botão "Remover logo" volta ao ícone/visual padrão.
+- **Impressora**: ativo, tipo de conexão (usb/rede/serial/arquivo),
+  vendor/product ID, IP/porta, dispositivo serial, colunas do papel.
+- **Fiscal**: ativo, provedor, ambiente (homologação/produção), URL da
+  API, **token de acesso** e CNPJ do emitente.
+- **Cupom de impressão, por tabela**: escolhe a tabela num dropdown e
+  ajusta título, quais campos entram, rodapé e se imprime
+  automaticamente ao salvar -- o mesmo que dá pra configurar no editor
+  visual de schema, só que aqui é o admin ajustando o sistema já
+  entregue, sem precisar de quem programou.
+
+  > A **nota fiscal** (NF-e/NFC-e) não entra aqui -- ela segue o layout
+  > exigido pela SEFAZ e não é customizável. Isso é só o cupom não
+  > fiscal impresso na térmica (recibo simples).
+
+Isso é pensado pra quem entrega o sistema pronto pra um cliente: em vez
+de reabrir o YAML (ou pedir pra você) toda vez que o cliente troca de
+provedor fiscal, contrata uma impressora nova, passa de homologação pra
+produção, quer mudar o texto do cupom, ou simplesmente quer a marca dele
+no sistema, o próprio admin resolve pela tela.
+
+A imagem da logo é copiada para a mesma pasta do banco do sistema (ex:
+`data/logo.png`) -- assim como o `.db`, ela é local desse cliente e não
+vai pro controle de versão.
+
+**Prioridade**: o que é salvo em Configurações sobrepõe o YAML (que
+continua servindo como valor inicial/padrão do schema). O token digitado
+na tela tem prioridade sobre `api_token_env` -- se nenhum dos dois for
+usado, cai no comportamento de sempre (variável de ambiente).
+
+> **Sobre segurança**: diferente do YAML (que costuma ir pra controle de
+> versão, por isso nunca deve ter o token), essas configurações ficam no
+> banco `.db` do próprio sistema -- local, específico daquele cliente, e
+> não versionado. É o mesmo nível de confiança que o banco já tem hoje
+> (ele guarda senhas com hash e todos os dados dos clientes). Ainda
+> assim, o token fica em texto legível ali dentro; trate o arquivo `.db`
+> com o mesmo cuidado que trataria qualquer outra credencial local.
 
 ## Adicionando um campo depois que o sistema já está em produção
 
@@ -266,13 +363,68 @@ python main.py
 
 ## Gerando um executável para o cliente (sem precisar instalar Python)
 
+O jeito mais rápido é o botão **"Gerar executável"** no editor visual
+(ao lado de "Rodar sistema"): salva o schema, roda o empacotamento numa
+janela de terminal separada (assim dá pra acompanhar o progresso e ver
+qualquer erro) e usa o nome do sistema como nome do `.exe`. Pode levar
+alguns minutos -- quando terminar, o executável fica em `dist/`.
+
+Isso equivale a rodar manualmente:
+
 ```bash
 pip install pyinstaller
-flet pack main.py --name SistemaCliente --add-data "schema_clientex.yaml:."
+flet pack main.py --name SistemaCliente --add-data "schema_clientex.yaml:." --hidden-import appdirs
 ```
 
 Isso gera um `.exe`/binário standalone que o cliente pode simplesmente
-abrir com duplo clique.
+abrir com duplo clique -- sem precisar instalar Python nem nenhuma
+dependência. Se quiser mais controle (ícone customizado, versão de
+arquivo, modo pasta em vez de arquivo único), rode o comando manualmente
+com as opções de `flet pack --help`.
+
+> **Por que o botão copia o schema pra `schema_embutido.yaml` antes de
+> empacotar?** Um `.exe` gerado pelo PyInstaller, ao rodar com duplo
+> clique, não tem a pasta atual apontando pra onde os arquivos de
+> `--add-data` foram extraídos -- por isso `main.py` não pode usar um
+> caminho relativo simples pra achar o schema. Pra resolver isso de
+> forma genérica (o schema de cada cliente tem um nome diferente), o
+> botão copia o `.yaml` escolhido pra esse nome fixo antes de chamar o
+> `flet pack`, e `main.py` sabe procurar exatamente por esse nome dentro
+> do executável (via `sys._MEIPASS`, que aponta pro lugar certo nos dois
+> modos de empacotamento). O arquivo `schema_embutido.yaml` que aparece
+> na raiz do projeto depois de gerar é só esse artefato de build (já
+> está no `.gitignore`) -- pode apagar sem problema.
+
+> **Onde o sistema instalado guarda os dados.** Quando instalado em
+> `Program Files` (padrão do instalador), o usuário comum do Windows não
+> tem permissão de gravar ali -- e o motor grava banco, backups,
+> exports, cupons de teste e logo em pastas relativas tipo `data/`. Sem
+> tratar isso, o sistema quebra com `PermissionError: Acesso negado` na
+> primeira gravação. Por isso, ao rodar já empacotado, `main.py` troca a
+> pasta de trabalho do processo pra `%LOCALAPPDATA%\<NomeDoExecutável>\`
+> (gravável por qualquer usuário) antes de tocar em qualquer arquivo --
+> os dados de cada sistema instalado ficam isolados nessa pasta, sem
+> precisar mudar nada no resto do motor. Rodando com `python main.py`
+> (modo desenvolvimento), nada muda: continua gravando na pasta atual,
+> como sempre.
+
+### Instalador de verdade (com atalho e desinstalador)
+
+Pra entregar algo mais profissional que um `.exe` solto -- com atalho no
+menu iniciar, ícone na área de trabalho (opcional) e desinstalador --
+use o botão **"Gerar instalador"**, ao lado de "Gerar executável".
+
+Exige o [Inno Setup](https://jrsoftware.org/isdl.php) instalado uma vez
+na máquina (gratuito). O botão então, em sequência:
+
+1. Empacota o sistema em modo pasta (`flet pack --onedir`).
+2. Gera um script `.iss` (Inno Setup) preenchido com o nome do sistema.
+3. Compila o instalador com o `ISCC.exe` do Inno Setup.
+
+O instalador final fica em `dist/instalador/<NomeDoSistema>_Instalador.exe`
+-- é esse arquivo que você entrega pro cliente. Se o Inno Setup não
+estiver instalado, o botão avisa e não tenta nada (pra não gastar tempo
+com um build que não vai virar instalador).
 
 ## Editor visual de schema
 
@@ -285,12 +437,70 @@ python main.py --editor schema_clientex.yaml # abre um schema existente
 
 A tela permite: criar/remover/reordenar tabelas, adicionar/editar/remover
 campos (com todas as opções: tipo, obrigatório, buscável, valor padrão,
-mínimo/máximo, referência a outra tabela) e configurar abas do
-formulário. O botão "Salvar" grava o `.yaml` no caminho informado, e
-"Rodar sistema" abre o sistema gerado numa janela separada para testar
-na hora. Seções mais avançadas que o editor ainda não monta visualmente
-(impressora, gateway fiscal) são preservadas como estão no arquivo ao
-salvar — continue ajustando essas partes direto no YAML.
+mínimo/máximo, largura de coluna, referência a outra tabela) e configurar
+abas do formulário. O botão "Salvar" grava o `.yaml` no caminho informado,
+e "Rodar sistema" abre o sistema gerado numa janela separada para testar
+na hora.
+
+### Módulos prontos (blocos de tabelas reutilizáveis)
+
+O botão de "importar módulo" (ícone ao lado de "Nova tabela", na coluna
+de Tabelas) junta num clique um bloco pronto de tabelas -- em vez de
+montar campo por campo toda vez que aparece um cliente parecido com um
+que você já atendeu. Vem com quatro módulos de fábrica, pensados pra
+profissionais que atendem pessoas por consulta/sessão (nutricionista,
+médico, dentista, psicólogo, esteticista, personal trainer...):
+
+- **Pacientes/Clientes** — cadastro genérico (nome, CPF, contato,
+  endereço, nascimento). Os outros três esperam uma tabela chamada
+  exatamente `pacientes` -- importe este primeiro.
+- **Anamnese / Histórico clínico** — ficha vinculada ao paciente
+  (queixa, histórico, observações).
+- **Agendamento / Consultas** — data, horário, paciente e status.
+- **Financeiro simples (cobranças)** — valor cobrado, forma de
+  pagamento, status (pago/pendente).
+
+Cada módulo é só um arquivo `.yaml` na pasta `modulos/`, com o mesmo
+formato de uma tabela normal (é literalmente um YAML de exemplo, só que
+com metadados extra no topo):
+
+```yaml
+modulo:
+  nome: "Nome mostrado no diálogo"
+  descricao: "Uma frase explicando o que o módulo resolve."
+  depende_de: [pacientes]   # nomes de tabela que precisam já existir
+
+tabelas:
+  - nome: minha_tabela
+    label: "..."
+    campos: [...]
+```
+
+Pra criar módulos novos (ex: um específico pra estética, ou pra
+petshop), copie um arquivo existente e ajuste. O diálogo de importação
+lê a pasta inteira sozinho -- não precisa registrar o módulo em nenhum
+outro lugar. Importar não duplica tabela (se já existir uma com o mesmo
+nome, é ignorada e avisada), e avisa quando falta a tabela da qual o
+módulo depende -- mas não impede a importação, já que a ordem das
+tabelas no YAML não importa pro SQLite (só importa que a tabela
+referenciada *exista*, com esse nome, quando o sistema abrir).
+
+Cada tabela também tem, na mesma tela, as seções de **alerta de estoque
+mínimo** (liga/desliga e escolhe os campos de quantidade/mínimo por
+dropdown), **baixa automática de estoque** (liga/desliga e escolhe, por
+dropdown, a tabela de estoque e os campos de produto/quantidade) e
+**impressão de cupom** (título, quais campos entram, rodapé, e se
+imprime automaticamente ao salvar). Não precisa mais editar o YAML na
+mão pra essas funcionalidades.
+
+Seções mais avançadas que o editor ainda não monta visualmente
+(configuração da impressora física em `sistema.impressora`, gateway
+fiscal em `sistema.fiscal`/`fiscal:` por tabela) são preservadas como
+estão no arquivo ao salvar — continue ajustando essas partes direto no
+YAML. **Permissões por usuário** também ficam de fora de propósito: elas
+não são parte do schema (arquivo `.yaml`), e sim de cada conta de usuário
+já criada num sistema rodando -- configure-as na tela de Usuários do
+próprio sistema (veja a seção de permissões mais abaixo), não no editor.
 
 ## Validações customizadas
 
@@ -313,16 +523,107 @@ Além de `obrigatorio`, campos numéricos (`inteiro`/`decimal`) aceitam
 A validação roda ao salvar o formulário, antes de gravar no banco; se
 falhar, a mensagem de erro aparece no próprio formulário.
 
+## Alerta de estoque mínimo
+
+Para qualquer tabela com um campo de quantidade e um de estoque mínimo,
+ative o aviso automático na tela de lista:
+
+```yaml
+alerta_estoque:
+  ativo: true
+  campo_quantidade: quantidade
+  campo_minimo: estoque_minimo
+```
+
+Com isso, sempre que algum registro tiver `quantidade < estoque_minimo`:
+a tela de lista mostra um banner no topo listando os itens afetados
+(com a quantidade atual e o mínimo configurado), e a célula de
+quantidade daquele registro fica destacada em vermelho na tabela.
+
+## Baixa automática de estoque
+
+Numa tabela de "itens" (ex: `itens_venda`), ligue a quantidade lançada
+ali com o estoque do produto referenciado -- sem isso, o estoque
+precisaria ser ajustado manualmente a cada venda:
+
+```yaml
+baixa_estoque:
+  ativo: true
+  tabela_estoque: produtos       # tabela que guarda o estoque
+  campo_produto: produto_id      # campo (referencia) que aponta pro produto
+  campo_quantidade: quantidade   # campo desta tabela com a quantidade vendida
+  campo_estoque: quantidade      # campo de estoque, na tabela de produtos
+```
+
+Comportamento:
+
+- **Criar** um item novo desconta `campo_quantidade` do estoque do
+  produto referenciado.
+- **Editar** um item devolve o efeito do valor antigo e aplica o novo
+  -- cobre tanto mudança de quantidade quanto troca do produto
+  selecionado, sem precisar calcular diferença.
+- **Excluir** um item devolve a quantidade ao estoque.
+- **Estoque insuficiente**: o sistema **permite a venda mesmo assim**
+  (não bloqueia) e avisa na hora ("Atenção: estoque de 'X' ficou
+  negativo (-N)."), pra loja que às vezes vende por encomenda antes de
+  repor. Se quiser bloquear em vez de avisar, é uma mudança pontual em
+  `engine/estoque.py`.
+
+Combina bem com o **alerta de estoque mínimo** acima (que avisa quando o
+estoque fica baixo) e o **filtro de colunas** abaixo (pra destacar só a
+coluna de quantidade na lista, por exemplo).
+
+## Colunas ajustáveis e filtro de colunas
+
+Tabelas com muitos campos podem não caber todas as colunas na largura da
+janela. Três recursos ajudam nisso, dos mais permanentes aos mais rápidos:
+
+**Largura padrão no schema** -- ajuste no YAML quando quiser que todo
+mundo já abra com essa largura (ex: uma coluna de texto longo precisando
+de mais espaço):
+
+```yaml
+- nome: descricao_problema
+  label: "Descrição do problema"
+  tipo: texto_longo
+  largura: 220        # px -- se não informado, o motor calcula automaticamente
+```
+
+**Ajuste de largura pelo usuário na tela** -- o botão "Colunas" na tela de
+lista abre um diálogo com um campo de largura (em px) ao lado de cada
+coluna. Deixar em branco volta a usar a largura do schema/cálculo
+automático. Cada usuário pode ajustar a visão do jeito que preferir, sem
+mexer no YAML -- a escolha fica salva por usuário e por tabela e persiste
+entre sessões. (Não é possível arrastar a borda da coluna com o mouse --
+o `DataTable` do Flet não suporta isso nesta versão; o campo numérico no
+diálogo é o jeito de ajustar.)
+
+**Filtro de colunas** -- no mesmo diálogo "Colunas", um checkbox por campo
+esconde as colunas que não interessam naquele momento (ex: numa tabela
+com 10 campos, deixar visíveis só os 4 mais usados no dia a dia). Também
+salvo por usuário e por tabela. Colunas ocultas continuam existindo
+normalmente: exportação (CSV/Excel), impressão de cupom e emissão fiscal
+usam todos os campos, independente do que está oculto só na tela.
+
+> A tabela ainda não tem rolagem horizontal (tentativas de somar rolagem
+> horizontal e vertical quebraram o layout nesta versão do Flet) -- por
+> isso o filtro de colunas e o ajuste de largura são o jeito recomendado
+> de lidar com tabelas muito largas, em vez de rolar a tela pros lados.
+
+**Texto selecionável** -- os valores mostrados nas telas de lista (Produtos,
+Auditoria, Usuários, Notas Pendentes) podem ser destacados com o mouse e
+copiados, pra colar um telefone, e-mail ou protocolo em outro lugar sem
+precisar abrir o formulário de edição.
+
+> Não aparece no diálogo de resultado da emissão fiscal -- nessa versão
+> do Flet, texto selecionável dentro de um `AlertDialog` reintroduz um
+> bug de seleção espontânea (provavelmente ligado à animação de abertura
+> do diálogo). Como a lista (que não tem essa animação) funciona bem,
+> deixamos selecionável só ali.
+
 ## Próximos passos sugeridos
 
-- **Alertas de estoque mínimo**: notificação na tela quando `quantidade <
-  estoque_minimo` (fácil de adicionar já que o campo existe no exemplo).
-- **Templates prontos**: `schema_estoque.yaml`, `schema_clientes.yaml`,
-  `schema_os.yaml` como pontos de partida para os padrões mais comuns
-  que você já entrega hoje.
-- **Impressão automática após salvar**: hoje o cupom é impresso com um
-  clique manual; dá pra imprimir automaticamente assim que uma venda é
-  salva, se o cliente preferir.
-- **Fila de emissão fiscal com retry**: se a internet cair no momento da
-  venda, guardar a nota como "pendente" e reenviar automaticamente
-  quando a conexão voltar, em vez de perder a emissão.
+Todos os itens da lista original (editor visual, validações, alertas de
+estoque, templates prontos, impressão automática, fila de retry fiscal)
+já foram implementados. Ideias futuras ficam registradas aqui conforme
+surgirem.

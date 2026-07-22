@@ -65,14 +65,20 @@ def obter_preferencia(conn: sqlite3.Connection, usuario_id: int, chave: str) -> 
         chave: Nome da preferência (ex: '_pasta_backup')
     
     Returns:
-        Valor da preferência como string, ou None se não existir
+        Valor da preferência como string, ou None se não existir ou se a tabela não existir (bancos antigos)
     """
-    cur = conn.execute(
-        "SELECT valor FROM _preferencias WHERE usuario_id = ? AND chave = ?",
-        (usuario_id, chave),
-    )
-    row = cur.fetchone()
-    return row["valor"] if row else None
+    try:
+        cur = conn.execute(
+            "SELECT valor FROM _preferencias WHERE usuario_id = ? AND chave = ?",
+            (usuario_id, chave),
+        )
+        row = cur.fetchone()
+        return row["valor"] if row else None
+    except sqlite3.OperationalError as e:
+        # Tabela _preferencias não existe (banco criado antes desta feature)
+        if "no such table: _preferencias" in str(e):
+            return None
+        raise
 
 
 def salvar_preferencia(conn: sqlite3.Connection, usuario_id: int, chave: str, valor: str):
@@ -84,10 +90,36 @@ def salvar_preferencia(conn: sqlite3.Connection, usuario_id: int, chave: str, va
         usuario_id: ID do usuário
         chave: Nome da preferência (ex: '_pasta_backup')
         valor: Valor da preferência
+    
+    Nota: Se a tabela _preferencias não existir (bancos antigos), a função cria a tabela automaticamente.
     """
-    conn.execute(
-        """INSERT OR REPLACE INTO _preferencias (usuario_id, chave, valor) 
-           VALUES (?, ?, ?)""",
-        (usuario_id, chave, valor),
-    )
-    conn.commit()
+    try:
+        conn.execute(
+            """INSERT OR REPLACE INTO _preferencias (usuario_id, chave, valor) 
+               VALUES (?, ?, ?)""",
+            (usuario_id, chave, valor),
+        )
+        conn.commit()
+    except sqlite3.OperationalError as e:
+        # Tabela _preferencias não existe (banco criado antes desta feature)
+        if "no such table: _preferencias" in str(e):
+            # Cria a tabela
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _preferencias (
+                    usuario_id INTEGER NOT NULL,
+                    chave TEXT NOT NULL,
+                    valor TEXT,
+                    PRIMARY KEY (usuario_id, chave),
+                    FOREIGN KEY (usuario_id) REFERENCES _usuarios(id)
+                )
+            """)
+            conn.commit()
+            # Agora salva a preferencia
+            conn.execute(
+                """INSERT OR REPLACE INTO _preferencias (usuario_id, chave, valor) 
+                   VALUES (?, ?, ?)""",
+                (usuario_id, chave, valor),
+            )
+            conn.commit()
+        else:
+            raise

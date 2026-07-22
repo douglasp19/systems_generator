@@ -63,3 +63,7 @@ def aplicar_no_schema(conn: sqlite3.Connection, schema: Schema):
             for chave, valor in config_cupom.items():
                 if hasattr(tabela.impressao, chave):
                     setattr(tabela.impressao, chave, valor)
+
+    config_aparencia = obter(conn, "aparencia")
+    if config_aparencia:
+        schema.logo_path = config_aparencia.get("logo_path", "")

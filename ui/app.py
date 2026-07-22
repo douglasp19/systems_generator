@@ -5,6 +5,7 @@ são geradas dinamicamente a partir do schema -- não existe uma tela
 tabela nova no YAML, a tela aparece sozinha aqui.
 """
 import os
+import shutil
 import flet as ft
 
 from engine.schema_loader import Schema, Tabela, Campo
@@ -31,7 +32,18 @@ class SistemaApp:
         self.page.theme_mode = ft.ThemeMode.LIGHT
         self.page.theme = ft.Theme(color_scheme_seed=ft.Colors.INDIGO)
 
+        self.file_picker = ft.FilePicker()
+        self.page.services.append(self.file_picker)
+
         self._mostrar_login()
+
+    def _caminho_logo(self, extensao: str) -> str:
+        """Onde a logo fica salva no disco: mesma pasta do banco do
+        sistema, então some se o cliente apagar a pasta data/ inteira
+        (igual ao próprio banco), mas nunca vai pro controle de versão."""
+        pasta = os.path.dirname(os.path.abspath(self.schema.banco_path)) or "."
+        os.makedirs(pasta, exist_ok=True)
+        return os.path.join(pasta, f"logo{extensao}")
 
     # ------------------------------------------------------------------
     # LOGIN
@@ -67,11 +79,16 @@ class SistemaApp:
 
         campo_senha.on_submit = fazer_login
 
+        if self.schema.logo_path and os.path.exists(self.schema.logo_path):
+            simbolo_topo = ft.Image(src=self.schema.logo_path, width=144, height=144, fit=ft.BoxFit.CONTAIN)
+        else:
+            simbolo_topo = ft.Icon(ft.Icons.LOCK_OUTLINE, size=48, color=ft.Colors.INDIGO)
+
         self.page.add(
             ft.Container(
                 content=ft.Column(
                     [
-                        ft.Icon(ft.Icons.LOCK_OUTLINE, size=48, color=ft.Colors.INDIGO),
+                        simbolo_topo,
                         ft.Text(self.schema.nome_sistema, size=22, weight=ft.FontWeight.BOLD),
                         ft.Container(height=10),
                         campo_usuario,
@@ -176,9 +193,16 @@ class SistemaApp:
             on_change=trocar_tela,
         )
 
+        itens_cabecalho = []
+        if self.schema.logo_path and os.path.exists(self.schema.logo_path):
+            itens_cabecalho.append(
+                ft.Image(src=self.schema.logo_path, width=32, height=32, fit=ft.BoxFit.CONTAIN)
+            )
+        itens_cabecalho.append(ft.Text(self.schema.nome_sistema, size=18, weight=ft.FontWeight.BOLD))
+
         cabecalho = ft.Row(
             [
-                ft.Text(self.schema.nome_sistema, size=18, weight=ft.FontWeight.BOLD),
+                ft.Row(itens_cabecalho, spacing=10),
                 ft.Container(expand=True),
                 ft.Text(f"Usuário: {self.usuario_logado['usuario']} ({self.usuario_logado['papel']})", size=12),
                 ft.IconButton(ft.Icons.LOGOUT, tooltip="Sair", on_click=lambda e: self._mostrar_login()),
@@ -1244,6 +1268,52 @@ class SistemaApp:
         if opcoes_tabela_cupom:
             container_cupom.content = montar_secao_cupom(opcoes_tabela_cupom[0][0])
 
+        # --- Aparência (logo) -------------------------------------------
+        preview_logo = ft.Container()
+
+        def atualizar_preview_logo():
+            if self.schema.logo_path and os.path.exists(self.schema.logo_path):
+                preview_logo.content = ft.Image(
+                    src=self.schema.logo_path, width=96, height=96, fit=ft.BoxFit.CONTAIN,
+                )
+            else:
+                preview_logo.content = ft.Text("Nenhuma logo definida.", size=12, color=ft.Colors.GREY_600)
+
+        atualizar_preview_logo()
+
+        async def escolher_logo(e):
+            resultado = await self.file_picker.pick_files(
+                dialog_title="Escolher logo",
+                file_type=ft.FilePickerFileType.IMAGE,
+                allow_multiple=False,
+            )
+            if not resultado:
+                return
+            arquivo = resultado[0]
+            if not arquivo.path:
+                self._notificar("Não consegui ler o arquivo escolhido.")
+                return
+
+            extensao = os.path.splitext(arquivo.path)[1] or ".png"
+            destino = self._caminho_logo(extensao)
+            shutil.copyfile(arquivo.path, destino)
+
+            configuracoes.salvar(self.conn, "aparencia", {"logo_path": destino})
+            self.schema.logo_path = destino
+            audit.registrar(self.conn, "_configuracoes", None, "editar_logo", self.usuario_logado["usuario"])
+
+            atualizar_preview_logo()
+            self.page.update()
+            self._notificar("Logo atualizada.")
+
+        def remover_logo(e):
+            configuracoes.salvar(self.conn, "aparencia", {"logo_path": ""})
+            self.schema.logo_path = ""
+            audit.registrar(self.conn, "_configuracoes", None, "remover_logo", self.usuario_logado["usuario"])
+            atualizar_preview_logo()
+            self.page.update()
+            self._notificar("Logo removida.")
+
         self.area_conteudo.content = ft.Column(
             [
                 ft.Text("Configurações", size=20, weight=ft.FontWeight.BOLD),
@@ -1251,6 +1321,20 @@ class SistemaApp:
                     "Essas configurações ficam salvas neste sistema (não no arquivo "
                     "schema.yaml) e valem a partir de agora, sem precisar reiniciar.",
                     size=12, color=ft.Colors.GREY_600,
+                ),
+                ft.Divider(),
+                ft.Text("Aparência (logo)", weight=ft.FontWeight.BOLD),
+                ft.Text(
+                    "Aparece na tela de login e no canto superior esquerdo do sistema.",
+                    size=11, color=ft.Colors.GREY_600,
+                ),
+                preview_logo,
+                ft.Row(
+                    [
+                        ft.ElevatedButton("Escolher logo", icon=ft.Icons.IMAGE, on_click=escolher_logo),
+                        ft.OutlinedButton("Remover logo", icon=ft.Icons.DELETE_OUTLINE, on_click=remover_logo),
+                    ],
+                    scroll=ft.ScrollMode.AUTO,
                 ),
                 ft.Divider(),
                 ft.Text("Impressora térmica", weight=ft.FontWeight.BOLD),

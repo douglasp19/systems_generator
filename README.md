@@ -294,13 +294,17 @@ resolveria o problema.
    exata do provedor escolhido (o formato varia entre eles).
 5. Teste tudo em ambiente de homologação antes de trocar pra produção.
 
-## Configurações pela conta admin (impressora, fiscal e cupom)
+## Configurações pela conta admin (logo, impressora, fiscal e cupom)
 
 Além de configurar impressora e fiscal no YAML (`sistema.impressora` e
 `sistema.fiscal`), a conta admin pode ajustar tudo isso **dentro do
 próprio sistema rodando**, na aba "Configurações" -- sem editar arquivo
 nem reiniciar:
 
+- **Aparência (logo)**: escolhe uma imagem (PNG/JPG) pelo seletor de
+  arquivos do próprio sistema operacional. Ela passa a aparecer na tela
+  de login e no canto superior esquerdo do sistema, ao lado do nome.
+  Botão "Remover logo" volta ao ícone/visual padrão.
 - **Impressora**: ativo, tipo de conexão (usb/rede/serial/arquivo),
   vendor/product ID, IP/porta, dispositivo serial, colunas do papel.
 - **Fiscal**: ativo, provedor, ambiente (homologação/produção), URL da
@@ -318,8 +322,12 @@ nem reiniciar:
 Isso é pensado pra quem entrega o sistema pronto pra um cliente: em vez
 de reabrir o YAML (ou pedir pra você) toda vez que o cliente troca de
 provedor fiscal, contrata uma impressora nova, passa de homologação pra
-produção, ou quer mudar o texto do cupom, o próprio admin resolve pela
-tela.
+produção, quer mudar o texto do cupom, ou simplesmente quer a marca dele
+no sistema, o próprio admin resolve pela tela.
+
+A imagem da logo é copiada para a mesma pasta do banco do sistema (ex:
+`data/logo.png`) -- assim como o `.db`, ela é local desse cliente e não
+vai pro controle de versão.
 
 **Prioridade**: o que é salvo em Configurações sobrepõe o YAML (que
 continua servindo como valor inicial/padrão do schema). O token digitado

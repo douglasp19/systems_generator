@@ -235,6 +235,11 @@ class Schema:
     tabelas: list[Tabela] = field(default_factory=list)
     impressora: ImpressoraConfig = field(default_factory=ImpressoraConfig)
     fiscal: FiscalGlobalConfig = field(default_factory=FiscalGlobalConfig)
+    # Caminho da logo (imagem local) escolhida pelo admin na tela de
+    # Configurações -- não vem do YAML, só é preenchido em tempo de
+    # execução (ver engine/configuracoes.py). Aparece na tela de login e
+    # no cabeçalho do sistema.
+    logo_path: str = ""
 
     def tabela(self, nome: str) -> Optional[Tabela]:
         for t in self.tabelas:
